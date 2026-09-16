@@ -17,7 +17,7 @@ window.UPPO_CONFIG = {
   NATIVE_H:     1.772,   // measured native height of uppo7.glb (fixed asset — no runtime measuring)
   NATIVE_MIN_Y: -0.887,  // native Y of the feet (model is centered on its origin)
   HEAD_Y_RATIO: 1.05,    // leaves sprout at TARGET_H * this
-  ROTATE_X:     0,       // v11 diagnostic: 0=card upright. (v9:+90 hidden, v10:-90 hidden — both failed, so this is NOT just orientation)
+  ROTATE_X:     90,      // v13 flat-card use: 90 stands Uppo UP off a table card (view at a slight angle). Earlier +90 "failures" were the compositing bug (now fixed). If Uppo points DOWN into the table, switch to -90.
   ROTATE_Y:     0,       // 180 if Uppo faces away
   ROSE_RINGS: [ { r: 0.42, count: 6 }, { r: 0.68, count: 9 } ],
 };
@@ -238,7 +238,7 @@ AFRAME.registerComponent('uppo-experience', {
   _setFarewell:function(on){const el=document.getElementById('farewell');if(el)el.style.opacity=on?'1':'0';},
   _set:function(k,v){this.dbg[k]=v;this._renderDbg();},
   _renderDbg:function(){if(!this.CFG.DEBUG)return;const el=document.getElementById('debug');if(!el)return;el.style.display='block';
-    el.textContent=`ビルド: v12 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
+    el.textContent=`ビルド: v13 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
 });
 
 </script>
@@ -293,10 +293,7 @@ AFRAME.registerComponent('uppo-experience', {
     <a-entity light="type: directional; color: #fff; intensity: 0.55" position="1 2 1.5"></a-entity>
 
     <a-entity id="target" mindar-image-target="targetIndex: 0" uppo-experience>
-      <!-- DEBUG beacons (v11) — magenta rides on the marker anchor, cyan rides inside the stage. Remove once 3D is confirmed. -->
-      <a-box id="beaconPipe" color="#ff2fd0" width="0.22" height="0.22" depth="0.22" position="0.7 0 0"></a-box>
       <a-entity id="stage" rotation="0 0 0" scale="0.6 0.6 0.6">
-        <a-box id="beaconStage" color="#00e5ff" width="0.3" height="0.3" depth="0.3" position="0 0 0"></a-box>
         <a-entity id="uppo" gltf-model="#uppoModel"></a-entity>
         <a-entity id="leaves" position="0 1.05 0"></a-entity>
         <a-entity id="roses"  position="0 0 0"></a-entity>
