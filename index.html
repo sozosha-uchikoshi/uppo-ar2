@@ -45,6 +45,26 @@ window.addEventListener('DOMContentLoaded', () => {
   if (scene.renderer) makeTransparent();
   setTimeout(makeTransparent, 1500);
 
+  // v12: force the 3D canvas to stack ABOVE MindAR's full-screen <video>.
+  // MindAR appends the camera <video> at body level; without an explicit scene
+  // z-index the video paints over the whole a-scene (canvas included) and hides
+  // ALL 3D. Enforce order, and keep enforcing because MindAR restyles after start.
+  const fixStack = () => {
+    try {
+      scene.style.position = 'fixed'; scene.style.inset = '0'; scene.style.zIndex = '1';
+      const cv = scene.canvas || document.querySelector('.a-canvas');
+      if (cv) { cv.style.position = 'absolute'; cv.style.inset = '0'; cv.style.zIndex = '1'; }
+      document.querySelectorAll('video').forEach(v => {
+        v.style.position = 'fixed'; v.style.top = '0'; v.style.left = '0';
+        v.style.width = '100%'; v.style.height = '100%';
+        v.style.objectFit = 'cover'; v.style.zIndex = '0';
+      });
+    } catch (e) {}
+  };
+  scene.addEventListener('renderstart', fixStack);
+  let _fixN = 0;
+  const _fixTimer = setInterval(() => { fixStack(); if ((_fixN += 1) > 20) clearInterval(_fixTimer); }, 400);
+
   // Gate "はじめる" until the scene + MindAR system are ready. The model is a ~3MB
   // download; on cellular it can still be loading when the user taps, which would
   // otherwise call sys.start() before MindAR exists and throw.
@@ -218,7 +238,7 @@ AFRAME.registerComponent('uppo-experience', {
   _setFarewell:function(on){const el=document.getElementById('farewell');if(el)el.style.opacity=on?'1':'0';},
   _set:function(k,v){this.dbg[k]=v;this._renderDbg();},
   _renderDbg:function(){if(!this.CFG.DEBUG)return;const el=document.getElementById('debug');if(!el)return;el.style.display='block';
-    el.textContent=`ビルド: v11 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
+    el.textContent=`ビルド: v12 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
 });
 
 </script>
@@ -226,7 +246,7 @@ AFRAME.registerComponent('uppo-experience', {
   :root{--washi:#efe7d6;--washi2:#f5efe1;--ink:#2b2622;--bark:#7a5230;--leaf:#6a9a3f;--rose:#b0202f;--gold:#b8892b;}
   *{box-sizing:border-box;}
   html,body{margin:0;height:100%;background:#000;font-family:"Zen Maru Gothic",sans-serif;-webkit-tap-highlight-color:transparent;overflow:hidden;}
-  a-scene{position:fixed;inset:0;}
+  a-scene{position:fixed;inset:0;z-index:1;}
   #hud{position:fixed;inset:0;z-index:10;pointer-events:none;}
   #title{position:absolute;top:calc(env(safe-area-inset-top,0) + 14px);left:0;right:0;text-align:center;color:#fff;font-weight:700;font-size:17px;letter-spacing:.06em;text-shadow:0 2px 8px rgba(0,0,0,.6);}
   #title small{display:block;font-weight:500;font-size:12px;opacity:.9;margin-top:2px;letter-spacing:.14em;}
