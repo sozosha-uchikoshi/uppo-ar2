@@ -17,7 +17,7 @@ window.UPPO_CONFIG = {
   NATIVE_H:     1.772,   // measured native height of uppo7.glb (fixed asset — no runtime measuring)
   NATIVE_MIN_Y: -0.887,  // native Y of the feet (model is centered on its origin)
   HEAD_Y_RATIO: 1.05,    // leaves sprout at TARGET_H * this
-  ROTATE_X:     90,      // 90 = stands UP out of a card lying flat on a table (toward you); -90 faces into the table; 0 = card held upright
+  ROTATE_X:     -90,     // v10 device-confirmed: -90 = stands UP toward you from a flat card; 90 = into the table; 0 = card held upright
   ROTATE_Y:     0,       // 180 if Uppo faces away
   ROSE_RINGS: [ { r: 0.42, count: 6 }, { r: 0.68, count: 9 } ],
 };
@@ -218,7 +218,7 @@ AFRAME.registerComponent('uppo-experience', {
   _setFarewell:function(on){const el=document.getElementById('farewell');if(el)el.style.opacity=on?'1':'0';},
   _set:function(k,v){this.dbg[k]=v;this._renderDbg();},
   _renderDbg:function(){if(!this.CFG.DEBUG)return;const el=document.getElementById('debug');if(!el)return;el.style.display='block';
-    el.textContent=`ビルド: v9 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
+    el.textContent=`ビルド: v10 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
 });
 
 </script>
