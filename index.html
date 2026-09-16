@@ -11,7 +11,7 @@
 <script>
 /* ---- tuning knobs (adjust on-device) ---- */
 window.UPPO_CONFIG = {
-  DEBUG:        true,    // false to hide the on-screen debug readout (set false for submission)
+  DEBUG:        false,    // false to hide the on-screen debug readout (set false for submission)
   STAGE_SCALE:  0.6,     // overall scene size on the marker (marker width = 1 unit)
   TARGET_H:     1.0,     // scale Uppo to this height on the marker
   NATIVE_H:     1.772,   // measured native height of uppo7.glb (fixed asset — no runtime measuring)
@@ -238,7 +238,7 @@ AFRAME.registerComponent('uppo-experience', {
   _setFarewell:function(on){const el=document.getElementById('farewell');if(el)el.style.opacity=on?'1':'0';},
   _set:function(k,v){this.dbg[k]=v;this._renderDbg();},
   _renderDbg:function(){if(!this.CFG.DEBUG)return;const el=document.getElementById('debug');if(!el)return;el.style.display='block';
-    el.textContent=`ビルド: v13 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
+    el.textContent=`ビルド: v14 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
 });
 
 </script>
