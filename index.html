@@ -20,6 +20,15 @@ window.UPPO_CONFIG = {
   ROTATE_X:     90,      // v13 flat-card use: 90 stands Uppo UP off a table card (view at a slight angle). Earlier +90 "failures" were the compositing bug (now fixed). If Uppo points DOWN into the table, switch to -90.
   ROTATE_Y:     0,       // 180 if Uppo faces away
   ROSE_RINGS: [ { r: 0.42, count: 6 }, { r: 0.68, count: 9 } ],
+
+  /* ---- v15 additions (先生指示①②) ---- */
+  LIFT:           0.5,    // ② 紙(マーカー)からの距離。大きいほど紙から浮く。逆に沈むならマイナス値に。
+  SPIN_SENS:      0.011,  // ① 指スワイプの回転感度（ラジアン/px）
+  DRAG_THRESH:    8,      // ① これ未満の指の移動は「タップ」扱い（起こす/リセット）
+  AUTO_SPIN:      0.35,   // ① 放置中のゆっくり自動回転（ラジアン/秒）。0で自動回転オフ
+  AUTO_RESUME_MS: 1400,   // ① 指を離してから自動回転が再開するまでの待ち(ms)
+  BOB_AMP:        0.04,   // ① ふわふわ上下の振れ幅
+  BOB_SPEED:      1.6,    // ① ふわふわ上下の速さ
 };
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -33,6 +42,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (stage) {
       stage.setAttribute('rotation', `${cfg.ROTATE_X} ${cfg.ROTATE_Y} 0`);
       stage.setAttribute('scale', `${cfg.STAGE_SCALE} ${cfg.STAGE_SCALE} ${cfg.STAGE_SCALE}`);
+      stage.setAttribute('position', `0 0 ${cfg.LIFT}`);   // ② 紙(マーカー法線=+Z)方向へ浮かせて距離をとる
     }
   };
   if (scene.hasLoaded) applyCfg(); else scene.addEventListener('loaded', applyCfg);
@@ -102,6 +112,12 @@ AFRAME.registerComponent('uppo-experience', {
     this.leaves = this.el.querySelector('#leaves');
     this.roses  = this.el.querySelector('#roses');
     this.baseS  = null;
+    this.spinY  = 0;       // ① 現在のウッポの回転角(ラジアン)
+    this.footY  = 0;       // 足元の基準Y（ふわふわ上下の基準）
+    this._down  = false;   // ① 指が触れているか
+    this._moved = 0;       // ① 指の移動量（タップ/ドラッグ判定用）
+    this._lastX = 0;
+    this._autoResumeAt = 0;// ① 自動回転を再開する時刻
     this.dbg    = { AR:'初期化…', model:'読込中…', target:'—', state:'idle' };
     this._renderDbg();
 
@@ -124,13 +140,26 @@ AFRAME.registerComponent('uppo-experience', {
 
     this.el.addEventListener('targetFound', () => this.onFound());
     this.el.addEventListener('targetLost',  () => this.onLost());
-    this._onTap = () => this.onTap();
-    window.addEventListener('pointerdown', this._onTap);
+    // ① 指操作：スワイプで回転 / 軽いタップは従来通り（起こす・リセット）
+    this._onDown = (e) => { this._down = true; this._moved = 0; this._lastX = e.clientX; this._autoResumeAt = Infinity; };
+    this._onMove = (e) => { if (!this._down) return;
+      const dx = e.clientX - this._lastX; this._lastX = e.clientX; this._moved += Math.abs(dx);
+      if (this.el.object3D.visible && this.baseS != null) this.spinY += dx * this.CFG.SPIN_SENS; };
+    this._onUp   = () => { if (!this._down) return; this._down = false;
+      this._autoResumeAt = performance.now() + this.CFG.AUTO_RESUME_MS;
+      if (this._moved < this.CFG.DRAG_THRESH) this.onTap(); };
+    window.addEventListener('pointerdown',   this._onDown);
+    window.addEventListener('pointermove',   this._onMove);
+    window.addEventListener('pointerup',     this._onUp);
+    window.addEventListener('pointercancel', this._onUp);
 
     this._setHint('マーカーカードにかざしてね');
   },
   remove: function () {
-    window.removeEventListener('pointerdown', this._onTap);
+    window.removeEventListener('pointerdown',   this._onDown);
+    window.removeEventListener('pointermove',   this._onMove);
+    window.removeEventListener('pointerup',     this._onUp);
+    window.removeEventListener('pointercancel', this._onUp);
     if (this._camTimer) clearInterval(this._camTimer);
   },
 
@@ -153,7 +182,8 @@ AFRAME.registerComponent('uppo-experience', {
     this.baseS = s;
     this.uppo.object3D.scale.set(s, s, s);
     // model is centered on its origin in X/Z; lift so the feet (NATIVE_MIN_Y) rest on the marker (y=0)
-    this.uppo.object3D.position.set(0, -C.NATIVE_MIN_Y * s, 0);
+    this.footY = -C.NATIVE_MIN_Y * s;
+    this.uppo.object3D.position.set(0, this.footY, 0);
     this.leaves.object3D.position.y = C.TARGET_H * C.HEAD_Y_RATIO;   // leaves at the head
     this._set('model', 'OK ✓ (h=' + C.NATIVE_H.toFixed(2) + ' 固定)');
   },
@@ -198,7 +228,7 @@ AFRAME.registerComponent('uppo-experience', {
   onFound: function () {
     this._set('target','発見 ✓'); this.el.object3D.visible=true;
     if (this.state==='idle') this._toSleeping();
-    this._setHint(this.state==='farewell'?'もう一度 タップ':'画面をタップして起こそう');
+    this._setHint(this.state==='farewell'?'ゆびで回せる ・ もう一度タップ':'画面をタップして起こそう');
   },
   onLost: function () { this._set('target','ロスト'); },
   onTap: function () { if(this.state==='sleeping')this._wake(); else if(this.state==='farewell')this._reset(); },
@@ -206,6 +236,7 @@ AFRAME.registerComponent('uppo-experience', {
   _toSleeping: function(){ this.state='sleeping'; this._set('state','sleeping'); this._setHint('画面をタップして起こそう'); this._setFarewell(false); },
   _wake: function(){
     this.state='waking'; this._set('state','waking'); this._setHint('');
+    this.uppo.object3D.position.y = this.footY;   // ふわふわ上下をリセットしてから覚醒演出へ
     const done=()=>{ this.leaves.querySelectorAll('a-entity').forEach(l=>l.emit('bloom'));
       this.roses.querySelectorAll('a-entity').forEach(r=>r.emit('bloom'));
       const ms=200+this.roses.querySelectorAll('a-entity').length*45+520;
@@ -217,14 +248,31 @@ AFRAME.registerComponent('uppo-experience', {
       {t:320,s:[b*0.86,b*1.24,b*0.86],e:this._easeOutQuad},{t:560,s:[b,b,b],e:this._easeOutBack}
     ],done);
   },
-  _toFarewell: function(){ this.state='farewell'; this._set('state','farewell'); this._setFarewell(true); this._setHint('もう一度 タップ'); },
+  _toFarewell: function(){ this.state='farewell'; this._set('state','farewell'); this._setFarewell(true); this._setHint('ゆびで回せる ・ もう一度タップ'); },
   _reset: function(){ this.state='resetting'; this._set('state','resetting'); this._setFarewell(false);
     this.leaves.querySelectorAll('a-entity').forEach(l=>l.emit('hide'));
     this.roses.querySelectorAll('a-entity').forEach(r=>r.emit('hide'));
     setTimeout(()=>this._toSleeping(),320); },
 
-  tick: function(time){ if(this.state!=='sleeping'||this.baseS==null)return;
-    const s=this.baseS*(1+0.03*Math.sin(time/520)); this.uppo.object3D.scale.set(s,s,s); },
+  tick: function(time, dt){
+    if(this.baseS==null || !this.el.object3D.visible) return;
+    const C=this.CFG, now=performance.now();
+    const resting = (this.state==='sleeping' || this.state==='farewell');
+    // ① 放置中はゆっくり自動回転（指を離して少し経つと再開）
+    if(resting && !this._down && now > this._autoResumeAt){
+      this.spinY += C.AUTO_SPIN * ((dt||16)/1000);
+    }
+    // ① 回転（スワイプ＋自動）をウッポ・若葉・バラにまとめて適用＝一緒に回る
+    this.uppo.object3D.rotation.y   = this.spinY;
+    this.leaves.object3D.rotation.y = this.spinY;
+    this.roses.object3D.rotation.y  = this.spinY;
+    // ① ふわふわ上下＋（眠り中の）呼吸。覚醒・リセットの演出中はいじらない
+    if(resting){
+      this.uppo.object3D.position.y = this.footY + C.BOB_AMP * Math.sin(now/1000 * C.BOB_SPEED);
+      const s = (this.state==='sleeping') ? this.baseS*(1+0.03*Math.sin(now/520)) : this.baseS;
+      this.uppo.object3D.scale.set(s,s,s);
+    }
+  },
 
   _easeOutQuad:function(t){return 1-(1-t)*(1-t);},
   _easeOutBack:function(t){const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);},
@@ -238,14 +286,14 @@ AFRAME.registerComponent('uppo-experience', {
   _setFarewell:function(on){const el=document.getElementById('farewell');if(el)el.style.opacity=on?'1':'0';},
   _set:function(k,v){this.dbg[k]=v;this._renderDbg();},
   _renderDbg:function(){if(!this.CFG.DEBUG)return;const el=document.getElementById('debug');if(!el)return;el.style.display='block';
-    el.textContent=`ビルド: v14 ✅（新）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
+    el.textContent=`ビルド: v15 ✅（回転＋距離）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
 });
 
 </script>
 <style>
   :root{--washi:#efe7d6;--washi2:#f5efe1;--ink:#2b2622;--bark:#7a5230;--leaf:#6a9a3f;--rose:#b0202f;--gold:#b8892b;}
   *{box-sizing:border-box;}
-  html,body{margin:0;height:100%;background:#000;font-family:"Zen Maru Gothic",sans-serif;-webkit-tap-highlight-color:transparent;overflow:hidden;}
+  html,body{margin:0;height:100%;background:#000;font-family:"Zen Maru Gothic",sans-serif;-webkit-tap-highlight-color:transparent;overflow:hidden;touch-action:none;}
   a-scene{position:fixed;inset:0;z-index:1;}
   #hud{position:fixed;inset:0;z-index:10;pointer-events:none;}
   #title{position:absolute;top:calc(env(safe-area-inset-top,0) + 14px);left:0;right:0;text-align:center;color:#fff;font-weight:700;font-size:17px;letter-spacing:.06em;text-shadow:0 2px 8px rgba(0,0,0,.6);}
