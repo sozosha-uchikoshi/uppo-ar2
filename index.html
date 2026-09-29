@@ -1,489 +1,264 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ウッポ 〜靱公園のねむり番〜</title>
+<meta name="description" content="靱公園の御神木に眠る木霊「ウッポ」の物語と、ARでウッポを起こす体験。">
+<meta name="theme-color" content="#efe7d6">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Shippori+Mincho:wght@600&display=swap" rel="stylesheet">
-<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-<script>
-/* ---- tuning knobs (adjust on-device) ---- */
-window.UPPO_CONFIG = {
-  DEBUG:        false,    // false to hide the on-screen debug readout (set false for submission)
-  STAGE_SCALE:  0.6,     // overall scene size on the marker (marker width = 1 unit)
-  TARGET_H:     1.0,     // scale Uppo to this height on the marker
-  NATIVE_H:     1.772,   // measured native height of uppo7.glb (fixed asset — no runtime measuring)
-  NATIVE_MIN_Y: -0.887,  // native Y of the feet (model is centered on its origin)
-  HEAD_Y_RATIO: 1.05,    // leaves sprout at TARGET_H * this
-  ROTATE_X:     90,      // v13 flat-card use: 90 stands Uppo UP off a table card (view at a slight angle). Earlier +90 "failures" were the compositing bug (now fixed). If Uppo points DOWN into the table, switch to -90.
-  ROTATE_Y:     0,       // 180 if Uppo faces away
-  ROSE_RINGS: [ { r: 0.42, count: 6 }, { r: 0.68, count: 9 } ],
-
-  /* ---- v15 additions (先生指示①②) ---- */
-  LIFT:           0.5,    // ② 紙(マーカー)からの距離。大きいほど紙から浮く。逆に沈むならマイナス値に。
-  SPIN_SENS:      0.011,  // ① 指スワイプの回転感度（ラジアン/px）
-  DRAG_THRESH:    8,      // ① これ未満の指の移動は「タップ」扱い（起こす/リセット）
-  AUTO_SPIN:      0.35,   // ① 放置中のゆっくり自動回転（ラジアン/秒）。0で自動回転オフ
-  AUTO_RESUME_MS: 1400,   // ① 指を離してから自動回転が再開するまでの待ち(ms)
-  BOB_AMP:        0.04,   // ① ふわふわ上下の振れ幅
-  BOB_SPEED:      1.6,    // ① ふわふわ上下の速さ
-
-  /* ---- スタンプ帳（A案） ---- */
-  STAMP_KEY:  'uppo_stamps_v1',   // localStorage 保存キー
-  STAMP_NAME: 'めざめの栞',         // 手に入る印の名前（好みで変更可）
-  STAMP_SPOTS: [                  // 先頭=今回の旗艦スポット。以降=次フェーズ（近日）
-    { id:'uppo',   name:'ウッポ（御神木）', live:true  },
-    { id:'rose',   name:'バラ園',          live:false },
-    { id:'keyaki', name:'ケヤキ並木',       live:false },
-    { id:'hiroba', name:'西園ひろば',        live:false },
-  ],
-};
-
-window.addEventListener('DOMContentLoaded', () => {
-  const cfg = window.UPPO_CONFIG;
-  const scene = document.querySelector('a-scene');
-  const startBtn = document.getElementById('startBtn');
-  const startScreen = document.getElementById('start');
-
-  const applyCfg = () => {
-    const stage = document.getElementById('stage');
-    if (stage) {
-      stage.setAttribute('rotation', `${cfg.ROTATE_X} ${cfg.ROTATE_Y} 0`);
-      stage.setAttribute('scale', `${cfg.STAGE_SCALE} ${cfg.STAGE_SCALE} ${cfg.STAGE_SCALE}`);
-      stage.setAttribute('position', `0 0 ${cfg.LIFT}`);   // ② 紙(マーカー法線=+Z)方向へ浮かせて距離をとる
-    }
-  };
-  if (scene.hasLoaded) applyCfg(); else scene.addEventListener('loaded', applyCfg);
-
-  // make the 3D canvas transparent so the camera feed is visible behind it
-  const makeTransparent = () => {
-    try { const r = scene.renderer; if (r) { r.setClearColor(0x000000, 0); r.setClearAlpha(0); } } catch (e) {}
-  };
-  scene.addEventListener('renderstart', makeTransparent);
-  if (scene.renderer) makeTransparent();
-  setTimeout(makeTransparent, 1500);
-
-  // v12: force the 3D canvas to stack ABOVE MindAR's full-screen <video>.
-  // MindAR appends the camera <video> at body level; without an explicit scene
-  // z-index the video paints over the whole a-scene (canvas included) and hides
-  // ALL 3D. Enforce order, and keep enforcing because MindAR restyles after start.
-  const fixStack = () => {
-    try {
-      scene.style.position = 'fixed'; scene.style.inset = '0'; scene.style.zIndex = '1';
-      const cv = scene.canvas || document.querySelector('.a-canvas');
-      if (cv) { cv.style.position = 'absolute'; cv.style.inset = '0'; cv.style.zIndex = '1'; }
-      document.querySelectorAll('video').forEach(v => {
-        v.style.position = 'fixed'; v.style.top = '0'; v.style.left = '0';
-        v.style.width = '100%'; v.style.height = '100%';
-        v.style.objectFit = 'cover'; v.style.zIndex = '0';
-      });
-    } catch (e) {}
-  };
-  scene.addEventListener('renderstart', fixStack);
-  let _fixN = 0;
-  const _fixTimer = setInterval(() => { fixStack(); if ((_fixN += 1) > 20) clearInterval(_fixTimer); }, 400);
-
-  // Gate "はじめる" until the scene + MindAR system are ready. The model is a ~3MB
-  // download; on cellular it can still be loading when the user taps, which would
-  // otherwise call sys.start() before MindAR exists and throw.
-  let ready = false;
-  const markReady = () => {
-    if (ready) return;
-    ready = true;
-    startBtn.disabled = false;
-    startBtn.innerHTML = 'はじめる<span class="k">カメラを ゆるして ください</span>';
-  };
-  startBtn.disabled = true;
-  startBtn.innerHTML = '読み込み中…<span class="k">しばらく お待ちください</span>';
-  if (scene.hasLoaded) markReady(); else scene.addEventListener('loaded', markReady);
-
-  const startAR = () => {
-    if (!ready) return;
-    const sys = scene.systems['mindar-image-system'];
-    if (!sys) { setTimeout(startAR, 300); return; }   // system not attached yet — wait
-    startScreen.style.opacity = '0';
-    setTimeout(() => { startScreen.style.display = 'none'; }, 400);
-    try { sys.start(); }
-    catch (e) { const d=document.getElementById('debug'); if(d){d.style.display='block'; d.textContent='start() エラー: '+e.message;} }
-  };
-  startBtn.addEventListener('click', startAR);
-});
-
-</script>
-<script>
-/* uppo-experience v5: 3-tier model measure + recentering fallback + reliable camera check */
-AFRAME.registerComponent('uppo-experience', {
-  init: function () {
-    this.CFG    = window.UPPO_CONFIG;
-    this.state  = 'idle';
-    this.uppo   = this.el.querySelector('#uppo');
-    this.leaves = this.el.querySelector('#leaves');
-    this.roses  = this.el.querySelector('#roses');
-    this.baseS  = null;
-    this.spinY  = 0;       // ① 現在のウッポの回転角(ラジアン)
-    this.footY  = 0;       // 足元の基準Y（ふわふわ上下の基準）
-    this._down  = false;   // ① 指が触れているか
-    this._moved = 0;       // ① 指の移動量（タップ/ドラッグ判定用）
-    this._lastX = 0;
-    this._autoResumeAt = 0;// ① 自動回転を再開する時刻
-    this.dbg    = { AR:'初期化…', model:'読込中…', target:'—', state:'idle' };
-    this._renderDbg();
-
-    this._buildLeaves();
-    this._buildRoses();
-
-    this.uppo.addEventListener('model-loaded', () => this._onModelLoaded());
-    this.uppo.addEventListener('model-error', () => this._set('model','読込エラー ✗ (uppo7.glb)'));
-
-    const sc = this.el.sceneEl;
-    sc.addEventListener('arError', () => this._set('AR','起動エラー ✗ (カメラ許可/対応を確認)'));
-
-    // Reliable camera check: watch for the MindAR <video> actually producing frames.
-    let waited = 0;
-    this._camTimer = setInterval(() => {
-      const v = document.querySelector('video');
-      if (v && v.videoWidth > 0) { this._styleVideo(v); this._set('AR','カメラ起動 ✓'); clearInterval(this._camTimer); this._camTimer = null; }
-      else if ((waited += 500) >= 9000) { this._set('AR','カメラ不可（許可/別ブラウザ要確認）'); clearInterval(this._camTimer); this._camTimer = null; }
-    }, 500);
-
-    this.el.addEventListener('targetFound', () => this.onFound());
-    this.el.addEventListener('targetLost',  () => this.onLost());
-    // ① 指操作：スワイプで回転 / 軽いタップは従来通り（起こす・リセット）
-    this._onDown = (e) => { this._down = true; this._moved = 0; this._lastX = e.clientX; this._autoResumeAt = Infinity; };
-    this._onMove = (e) => { if (!this._down) return;
-      const dx = e.clientX - this._lastX; this._lastX = e.clientX; this._moved += Math.abs(dx);
-      if (this.el.object3D.visible && this.baseS != null) this.spinY += dx * this.CFG.SPIN_SENS; };
-    this._onUp   = () => { if (!this._down) return; this._down = false;
-      this._autoResumeAt = performance.now() + this.CFG.AUTO_RESUME_MS;
-      if (this._moved < this.CFG.DRAG_THRESH) this.onTap(); };
-    window.addEventListener('pointerdown',   this._onDown);
-    window.addEventListener('pointermove',   this._onMove);
-    window.addEventListener('pointerup',     this._onUp);
-    window.addEventListener('pointercancel', this._onUp);
-
-    // スタンプ帳のボタン/シート（AR側のタップ・回転と誤爆しないよう pointer を止める）
-    const sb=document.getElementById('stampBtn'),
-          closeB=document.getElementById('stampClose'),
-          sheet=document.getElementById('stampSheet');
-    if(sb){ ['pointerdown','pointerup'].forEach(ev=>sb.addEventListener(ev,e=>e.stopPropagation())); sb.addEventListener('click',()=>this._openBook()); }
-    if(closeB){ ['pointerdown','pointerup'].forEach(ev=>closeB.addEventListener(ev,e=>e.stopPropagation())); closeB.addEventListener('click',()=>this._closeBook()); }
-    if(sheet){ ['pointerdown','pointerup'].forEach(ev=>sheet.addEventListener(ev,e=>e.stopPropagation())); sheet.addEventListener('click',(e)=>{ if(e.target===sheet) this._closeBook(); }); }
-    this._refreshStampBtn();
-
-    this._setHint('マーカーカードにかざしてね');
-  },
-  remove: function () {
-    window.removeEventListener('pointerdown',   this._onDown);
-    window.removeEventListener('pointermove',   this._onMove);
-    window.removeEventListener('pointerup',     this._onUp);
-    window.removeEventListener('pointercancel', this._onUp);
-    if (this._camTimer) clearInterval(this._camTimer);
-  },
-
-  // Force MindAR's camera <video> to fill the screen BEHIND the transparent canvas.
-  _styleVideo: function (v) {
-    Object.assign(v.style, {
-      position: 'fixed', top: '0', left: '0', right: '0', bottom: '0',
-      width: '100%', height: '100%', objectFit: 'cover',
-      display: 'block', visibility: 'visible', zIndex: '0',
-    });
-    // re-apply once more in case MindAR restyles after start
-    setTimeout(() => Object.assign(v.style, { position:'fixed', width:'100%', height:'100%', objectFit:'cover', zIndex:'0' }), 1200);
-  },
-
-  // No runtime measuring: uppo7.glb is a fixed asset with a known native height,
-  // so we scale by a constant. This removes the whole "自動計測不可" failure class.
-  _onModelLoaded: function () {
-    const C = this.CFG;
-    const s = C.TARGET_H / C.NATIVE_H;              // normalize known height to TARGET_H
-    this.baseS = s;
-    this.uppo.object3D.scale.set(s, s, s);
-    // model is centered on its origin in X/Z; lift so the feet (NATIVE_MIN_Y) rest on the marker (y=0)
-    this.footY = -C.NATIVE_MIN_Y * s;
-    this.uppo.object3D.position.set(0, this.footY, 0);
-    this.leaves.object3D.position.y = C.TARGET_H * C.HEAD_Y_RATIO;   // leaves at the head
-    this._set('model', 'OK ✓ (h=' + C.NATIVE_H.toFixed(2) + ' 固定)');
-  },
-
-  _buildLeaves: function () {
-    const g = ['#7cb342','#8bc34a','#5f9a35','#98c85a','#6faa3c'];
-    const t = [[0,0,0],[14,0,-8],[-12,0,10],[10,0,20],[-8,0,-22]];
-    const hh= [0.42,0.34,0.34,0.28,0.28];
-    for (let i=0;i<5;i++){ const l=document.createElement('a-entity');
-      l.setAttribute('geometry',`primitive: cone; radiusBottom: 0.055; radiusTop: 0; height: ${hh[i]}; segmentsRadial: 8`);
-      l.setAttribute('material',`color: ${g[i]}; roughness: 0.85; metalness: 0; flatShading: true`);
-      l.setAttribute('position',`${(i-2)*0.02} ${hh[i]/2} 0`);
-      l.setAttribute('rotation',`${t[i][0]} ${t[i][1]} ${t[i][2]}`);
-      l.setAttribute('scale','0 0 0');
-      l.setAttribute('animation__pop',`property: scale; from: 0 0 0; to: 1 1 1; dur: 460; easing: easeOutBack; startEvents: bloom; delay: ${i*70}`);
-      l.setAttribute('animation__hide',`property: scale; to: 0 0 0; dur: 260; easing: easeInQuad; startEvents: hide`);
-      this.leaves.appendChild(l);
-    }
-  },
-  _buildRoses: function () {
-    let order=0;
-    this.CFG.ROSE_RINGS.forEach((ring,ri)=>{ for(let k=0;k<ring.count;k++){
-      const ang=(k/ring.count)*Math.PI*2+ri*0.4;
-      const jit=(Math.sin(order*12.9898)*43758.5453)%1;
-      const r=ring.r+(jit-0.5)*0.06;
-      const rose=document.createElement('a-entity');
-      rose.setAttribute('position',`${Math.cos(ang)*r} 0.02 ${Math.sin(ang)*r}`);
-      rose.setAttribute('scale','0 0 0');
-      rose.setAttribute('animation__pop',`property: scale; from: 0 0 0; to: 1 1 1; dur: 520; easing: easeOutBack; startEvents: bloom; delay: ${200+order*45}`);
-      rose.setAttribute('animation__hide',`property: scale; to: 0 0 0; dur: 260; easing: easeInQuad; startEvents: hide`);
-      [{rad:0.07,h:0.018,y:0,c:'#c62439'},{rad:0.05,h:0.026,y:0.016,c:'#a71b2e'},{rad:0.03,h:0.026,y:0.032,c:'#7e1322'}].forEach(L=>{
-        const p=document.createElement('a-cylinder');
-        p.setAttribute('radius',L.rad); p.setAttribute('height',L.h);
-        p.setAttribute('position',`0 ${L.y} 0`);
-        p.setAttribute('material',`color: ${L.c}; roughness: 0.8; metalness: 0; flatShading: true`);
-        rose.appendChild(p);
-      });
-      this.roses.appendChild(rose); order++;
-    }});
-  },
-
-  onFound: function () {
-    this._set('target','発見 ✓'); this.el.object3D.visible=true;
-    if (this.state==='idle') this._toSleeping();
-    this._setHint(this.state==='farewell'?'ゆびで回せる ・ もう一度タップ':'画面をタップして起こそう');
-  },
-  onLost: function () { this._set('target','ロスト'); },
-  onTap: function () { if(this.state==='sleeping')this._wake(); else if(this.state==='farewell')this._reset(); },
-
-  _toSleeping: function(){ this.state='sleeping'; this._set('state','sleeping'); this._setHint('画面をタップして起こそう'); this._setFarewell(false); },
-  _wake: function(){
-    this.state='waking'; this._set('state','waking'); this._setHint('');
-    this.uppo.object3D.position.y = this.footY;   // ふわふわ上下をリセットしてから覚醒演出へ
-    const done=()=>{ this.leaves.querySelectorAll('a-entity').forEach(l=>l.emit('bloom'));
-      this.roses.querySelectorAll('a-entity').forEach(r=>r.emit('bloom'));
-      const ms=200+this.roses.querySelectorAll('a-entity').length*45+520;
-      setTimeout(()=>this._toFarewell(), ms+200); };
-    if(this.baseS==null){done();return;}
-    const b=this.baseS;
-    this._scaleKeys(this.uppo.object3D,[
-      {t:0,s:[b,b,b]},{t:130,s:[b*1.22,b*0.72,b*1.22],e:this._easeOutQuad},
-      {t:320,s:[b*0.86,b*1.24,b*0.86],e:this._easeOutQuad},{t:560,s:[b,b,b],e:this._easeOutBack}
-    ],done);
-  },
-  _toFarewell: function(){ this.state='farewell'; this._set('state','farewell'); this._setFarewell(true); this._setHint('ゆびで回せる ・ もう一度タップ'); this._awardStamp(); },
-  _reset: function(){ this.state='resetting'; this._set('state','resetting'); this._setFarewell(false);
-    this.leaves.querySelectorAll('a-entity').forEach(l=>l.emit('hide'));
-    this.roses.querySelectorAll('a-entity').forEach(r=>r.emit('hide'));
-    setTimeout(()=>this._toSleeping(),320); },
-
-  // ---- スタンプ帳（localStorage） ----
-  _loadStamps: function(){ try{ return JSON.parse(localStorage.getItem(this.CFG.STAMP_KEY))||{}; }catch(e){ return {}; } },
-  _saveStamps: function(o){ try{ localStorage.setItem(this.CFG.STAMP_KEY, JSON.stringify(o)); }catch(e){} },
-  _todayStr: function(){ const d=new Date(), z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'.'+z(d.getMonth()+1)+'.'+z(d.getDate()); },
-  _awardStamp: function(){
-    const store=this._loadStamps();
-    const first=!(store.uppo && store.uppo.earned);
-    if(first){ store.uppo={earned:true, date:this._todayStr()}; this._saveStamps(store); this._flourish(); }
-    this._renderStampBook(); this._refreshStampBtn();
-  },
-  _refreshStampBtn: function(){ const dot=document.getElementById('stampDot'); if(!dot)return;
-    const s=this._loadStamps(); dot.style.display=(s.uppo&&s.uppo.earned)?'block':'none'; },
-  _flourish: function(){ const el=document.getElementById('getFx'); if(!el)return;
-    const nm=el.querySelector('.gf-name'); if(nm) nm.textContent='「'+this.CFG.STAMP_NAME+'」を てにいれた！';
-    el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), 2600); },
-  _renderStampBook: function(){
-    const wrap=document.getElementById('stampList'); if(!wrap)return;
-    const store=this._loadStamps(), spots=this.CFG.STAMP_SPOTS;
-    const got=spots.filter(sp=>store[sp.id]&&store[sp.id].earned).length;
-    const cnt=document.getElementById('stampCount'); if(cnt) cnt.textContent=got+' / '+spots.length;
-    wrap.innerHTML='';
-    spots.forEach(sp=>{
-      const earned=store[sp.id]&&store[sp.id].earned;
-      const item=document.createElement('div');
-      item.className='sb-item'+(earned?' got':(sp.live?'':' soon'));
-      const disc=earned?'✓':(sp.live?'？':'近日');
-      const date=earned?('獲得 '+store[sp.id].date):(sp.live?'まだ':'これから');
-      item.innerHTML='<div class="sb-disc">'+disc+'</div><div class="sb-meta"><div class="sb-name">'+sp.name+'</div><div class="sb-date">'+date+'</div></div>';
-      wrap.appendChild(item);
-    });
-  },
-  _openBook: function(){ this._renderStampBook(); const s=document.getElementById('stampSheet');
-    if(s){ s.style.display='flex'; requestAnimationFrame(()=>s.classList.add('open')); } },
-  _closeBook: function(){ const s=document.getElementById('stampSheet');
-    if(s){ s.classList.remove('open'); setTimeout(()=>{ s.style.display='none'; },300); } },
-
-  tick: function(time, dt){
-    if(this.baseS==null || !this.el.object3D.visible) return;
-    const C=this.CFG, now=performance.now();
-    const resting = (this.state==='sleeping' || this.state==='farewell');
-    // ① 放置中はゆっくり自動回転（指を離して少し経つと再開）
-    if(resting && !this._down && now > this._autoResumeAt){
-      this.spinY += C.AUTO_SPIN * ((dt||16)/1000);
-    }
-    // ① 回転（スワイプ＋自動）をウッポ・若葉・バラにまとめて適用＝一緒に回る
-    this.uppo.object3D.rotation.y   = this.spinY;
-    this.leaves.object3D.rotation.y = this.spinY;
-    this.roses.object3D.rotation.y  = this.spinY;
-    // ① ふわふわ上下＋（眠り中の）呼吸。覚醒・リセットの演出中はいじらない
-    if(resting){
-      this.uppo.object3D.position.y = this.footY + C.BOB_AMP * Math.sin(now/1000 * C.BOB_SPEED);
-      const s = (this.state==='sleeping') ? this.baseS*(1+0.03*Math.sin(now/520)) : this.baseS;
-      this.uppo.object3D.scale.set(s,s,s);
-    }
-  },
-
-  _easeOutQuad:function(t){return 1-(1-t)*(1-t);},
-  _easeOutBack:function(t){const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2);},
-  _scaleKeys:function(obj,keys,done){let i=0;const seg=()=>{if(i>=keys.length-1){if(done)done();return;}
-    const a=keys[i],b=keys[i+1],dur=b.t-a.t,ease=b.e||(x=>x),t0=performance.now();
-    const step=(now)=>{let p=dur<=0?1:Math.min(1,(now-t0)/dur);const e=ease(p);
-      obj.scale.set(a.s[0]+(b.s[0]-a.s[0])*e,a.s[1]+(b.s[1]-a.s[1])*e,a.s[2]+(b.s[2]-a.s[2])*e);
-      if(p<1)requestAnimationFrame(step);else{i++;seg();}};requestAnimationFrame(step);};seg();},
-
-  _setHint:function(t){const el=document.getElementById('hint');if(!el)return;if(t){el.textContent=t;el.style.opacity='1';}else el.style.opacity='0';},
-  _setFarewell:function(on){const el=document.getElementById('farewell');if(el)el.style.opacity=on?'1':'0';},
-  _set:function(k,v){this.dbg[k]=v;this._renderDbg();},
-  _renderDbg:function(){if(!this.CFG.DEBUG)return;const el=document.getElementById('debug');if(!el)return;el.style.display='block';
-    el.textContent=`ビルド: v15 ✅（回転＋距離）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
-});
-
-</script>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Shippori+Mincho:wght@500;600&display=swap" rel="stylesheet">
+<!-- 物語を読んでいる間に、AR用の3Dモデルを先に読み込んでおく（AR画面の起動を速くする） -->
+<link rel="prefetch" href="uppo7.glb">
+<link rel="prefetch" href="targets.mind?v=3">
 <style>
-  :root{--washi:#efe7d6;--washi2:#f5efe1;--ink:#2b2622;--bark:#7a5230;--leaf:#6a9a3f;--rose:#b0202f;--gold:#b8892b;}
+  :root{
+    --washi:#efe7d6; --washi2:#f5efe1; --paper:#faf6ec;
+    --ink:#2b2622; --bark:#6f5238; --leaf:#6a9b41; --rose:#b3323a; --sub:#5a4c3d;
+  }
   *{box-sizing:border-box;}
-  html,body{margin:0;height:100%;background:#000;font-family:"Zen Maru Gothic",sans-serif;-webkit-tap-highlight-color:transparent;overflow:hidden;touch-action:none;}
-  a-scene{position:fixed;inset:0;z-index:1;}
-  #hud{position:fixed;inset:0;z-index:10;pointer-events:none;}
-  #title{position:absolute;top:calc(env(safe-area-inset-top,0) + 14px);left:0;right:0;text-align:center;color:#fff;font-weight:700;font-size:17px;letter-spacing:.06em;text-shadow:0 2px 8px rgba(0,0,0,.6);}
-  #title small{display:block;font-weight:500;font-size:12px;opacity:.9;margin-top:2px;letter-spacing:.14em;}
-  #hint{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0) + 26px);background:rgba(43,38,34,.86);color:#f5efe1;font-weight:700;font-size:16px;padding:12px 22px;border-radius:999px;border:1.5px solid rgba(245,239,225,.35);box-shadow:0 6px 18px rgba(0,0,0,.35);transition:opacity .4s;white-space:nowrap;}
-  #farewell{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0) + 60px);transform:translateX(-50%);width:min(82vw,340px);text-align:center;opacity:0;transition:opacity .6s;background:linear-gradient(180deg,var(--washi2),var(--washi));color:var(--ink);border:2px solid var(--ink);border-radius:14px;padding:22px 20px 18px;box-shadow:0 12px 34px rgba(0,0,0,.4);}
-  #farewell .fw-lead{font-weight:700;font-size:19px;line-height:1.7;}
-  #farewell .fw-sub{margin-top:12px;font-family:"Shippori Mincho",serif;font-weight:600;font-size:13px;color:var(--bark);letter-spacing:.04em;}
-  #farewell .strip{display:flex;gap:5px;justify-content:center;margin-top:14px;}
-  #farewell .strip i{width:34px;height:5px;border-radius:2px;display:block;}
-  #debug{position:absolute;left:10px;top:calc(env(safe-area-inset-top,0) + 56px);display:none;background:rgba(0,0,0,.62);color:#9effa0;font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;white-space:pre;padding:8px 10px;border-radius:8px;border:1px solid rgba(158,255,160,.3);}
-  #start{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:26px;transition:opacity .4s;background:radial-gradient(120% 90% at 50% 0%, #f6f0e2 0%, var(--washi) 55%, #e7dcc6 100%);}
-  #card{width:min(92vw,420px);border:2px solid var(--ink);border-radius:6px;padding:8px;background:var(--washi2);box-shadow:0 18px 50px rgba(0,0,0,.28);}
-  #card .inner{border:1.5px solid var(--ink);border-radius:4px;padding:30px 24px 26px;text-align:center;background:repeating-linear-gradient(115deg,rgba(122,82,48,.03) 0 3px,transparent 3px 7px),var(--washi2);}
-  #card h1{margin:0;font-weight:700;font-size:44px;color:var(--ink);letter-spacing:.1em;line-height:1.05;}
-  #card .sub{margin:8px 0 0;font-weight:500;font-size:15px;color:var(--bark);letter-spacing:.14em;}
-  #card .strip{display:flex;gap:6px;justify-content:center;margin:14px 0 20px;}
-  #card .strip i{width:52px;height:6px;border-radius:2px;display:block;}
-  #card p.lead{font-size:13.5px;color:#5a4c3d;line-height:1.9;margin:0 0 22px;}
-  #startBtn{pointer-events:auto;cursor:pointer;border:none;font-family:inherit;background:var(--ink);color:var(--washi2);font-weight:700;font-size:18px;padding:15px 40px;border-radius:999px;letter-spacing:.08em;box-shadow:0 8px 0 #17130f,0 14px 24px rgba(0,0,0,.3);transition:transform .08s,box-shadow .08s;}
-  #startBtn:active{transform:translateY(4px);box-shadow:0 4px 0 #17130f,0 8px 14px rgba(0,0,0,.3);}
-  #startBtn:disabled{opacity:.5;cursor:default;box-shadow:0 8px 0 #17130f,0 14px 24px rgba(0,0,0,.3);transform:none;}
-  #startBtn .k{display:block;font-weight:500;font-size:11px;opacity:.85;margin-top:3px;letter-spacing:.16em;}
-  #note{margin-top:16px;font-size:11.5px;color:var(--gold);font-weight:500;letter-spacing:.1em;}
-  .strip .c-bark{background:var(--bark);} .strip .c-leaf{background:var(--leaf);} .strip .c-rose{background:var(--rose);}
-  /* ---- スタンプ帳 ---- */
-  #stampBtn{position:absolute;left:calc(env(safe-area-inset-left,0) + 12px);top:calc(env(safe-area-inset-top,0) + 12px);z-index:12;pointer-events:auto;cursor:pointer;border:1.5px solid rgba(245,239,225,.5);background:rgba(43,38,34,.86);color:#f5efe1;font-family:inherit;font-weight:700;font-size:13px;letter-spacing:.06em;padding:9px 14px;border-radius:999px;box-shadow:0 6px 16px rgba(0,0,0,.35);}
-  #stampDot{display:none;position:absolute;top:-4px;right:-4px;width:12px;height:12px;border-radius:50%;background:var(--rose);border:2px solid #f5efe1;}
-  #getFx{position:absolute;inset:0;z-index:14;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .4s;}
-  #getFx.show{opacity:1;}
-  #getFx .gf-card{transform:scale(.82);transition:transform .5s cubic-bezier(.2,1.4,.4,1);background:linear-gradient(180deg,var(--washi2),var(--washi));border:2px solid var(--ink);border-radius:16px;padding:22px 28px;text-align:center;box-shadow:0 16px 40px rgba(0,0,0,.5);}
-  #getFx.show .gf-card{transform:scale(1);}
-  #getFx .gf-seal{width:56px;height:56px;margin:0 auto 10px;border-radius:50%;background:var(--rose);color:#fff;font-weight:700;font-size:24px;display:flex;align-items:center;justify-content:center;border:2px solid var(--ink);}
-  #getFx .gf-name{font-weight:700;font-size:17px;color:var(--ink);}
-  #getFx .gf-sub{font-family:"Shippori Mincho",serif;font-size:12px;color:var(--bark);margin-top:6px;}
-  #stampSheet{position:absolute;inset:0;z-index:15;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(20,16,12,.55);opacity:0;transition:opacity .3s;pointer-events:auto;}
-  #stampSheet.open{opacity:1;}
-  .sb-card{width:min(90vw,380px);max-height:86vh;overflow:auto;background:linear-gradient(180deg,var(--washi2),var(--washi));color:var(--ink);border:2px solid var(--ink);border-radius:14px;padding:20px;box-shadow:0 18px 50px rgba(0,0,0,.45);transform:translateY(12px);transition:transform .3s;}
-  #stampSheet.open .sb-card{transform:translateY(0);}
-  .sb-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;}
-  .sb-title{font-weight:700;font-size:22px;letter-spacing:.08em;color:var(--ink);}
-  .sb-kicker{font-family:"Shippori Mincho",serif;font-weight:600;font-size:12px;color:var(--bark);margin-top:2px;letter-spacing:.04em;}
-  .sb-count{text-align:right;font-weight:700;font-size:18px;color:var(--rose);line-height:1.1;}
-  .sb-count small{display:block;font-size:10px;color:var(--bark);font-weight:500;letter-spacing:.08em;margin-top:2px;}
-  .sb-strip{display:flex;gap:5px;margin:12px 0 14px;}
-  .sb-strip i{height:5px;flex:1;border-radius:2px;}
-  .sb-strip .c-bark{background:var(--bark);}.sb-strip .c-leaf{background:var(--leaf);}.sb-strip .c-rose{background:var(--rose);}
-  #stampList{display:flex;flex-direction:column;gap:10px;}
-  .sb-item{display:flex;align-items:center;gap:14px;border:1.5px solid var(--ink);border-radius:10px;padding:10px 12px;background:var(--washi2);}
-  .sb-item .sb-disc{width:46px;height:46px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;border:2px solid var(--ink);color:var(--ink);}
-  .sb-item.got{border-color:var(--leaf);}
-  .sb-item.got .sb-disc{background:var(--leaf);color:#fff;border-color:var(--leaf);box-shadow:0 0 0 3px rgba(106,154,63,.25);}
-  .sb-item.soon{opacity:.62;}
-  .sb-item.soon .sb-disc{border-style:dashed;color:var(--bark);font-size:11px;background:transparent;}
-  .sb-name{font-weight:700;font-size:15px;color:var(--ink);}
-  .sb-date{font-size:11px;color:var(--bark);margin-top:2px;font-weight:500;}
-  .sb-foot{font-family:"Shippori Mincho",serif;font-size:11.5px;color:#5a4c3d;line-height:1.8;margin:14px 0 16px;}
-  #stampClose{display:block;width:100%;pointer-events:auto;cursor:pointer;border:none;font-family:inherit;background:var(--ink);color:var(--washi2);font-weight:700;font-size:15px;padding:12px;border-radius:999px;letter-spacing:.08em;}
-  video{position:fixed !important;top:0 !important;left:0 !important;width:100% !important;height:100% !important;object-fit:cover !important;z-index:0 !important;}
-  .a-canvas{z-index:1 !important;}
+  
+  body{
+    margin:0; color:var(--ink); background:var(--washi);
+    background-image:
+      radial-gradient(120% 60% at 50% 0%, #f6f0e2 0%, rgba(246,240,226,0) 70%),
+      repeating-linear-gradient(115deg, rgba(111,82,56,.025) 0 3px, transparent 3px 7px);
+    font-family:"Shippori Mincho", serif; font-weight:500;
+    -webkit-text-size-adjust:100%;
+    padding-bottom:calc(96px + env(safe-area-inset-bottom,0));
+  }
+  ruby rt{font-size:.5em; font-family:"Zen Maru Gothic",sans-serif; color:var(--bark); letter-spacing:0;}
+  .wrap{max-width:520px; margin:0 auto; padding:0 16px;}
+  /* 文章は「分かち書き」なので、スペースの位置で改行させる（単語の途中で切れないように） */
+  h1,h2,.text,.voice,.lead,.steps,.cap,.source{word-break:keep-all; overflow-wrap:anywhere; line-break:strict;}
+  .strip{display:flex; gap:6px; justify-content:center;}
+  .strip i{display:block; width:46px; height:6px; border-radius:2px;}
+  .c-bark{background:var(--bark);} .c-leaf{background:var(--leaf);} .c-rose{background:var(--rose);}
+
+  /* ---------- 表紙 ---------- */
+  .cover{min-height:88vh; min-height:88svh; display:flex; align-items:center; justify-content:center; padding:28px 0 12px;}
+  .frame{border:2px solid var(--ink); border-radius:14px; padding:7px; background:var(--washi2); box-shadow:0 14px 40px rgba(43,38,34,.16); width:100%;}
+  .frame > .in{border:1.5px solid var(--ink); border-radius:9px; background:var(--paper);}
+  .cover .in{padding:34px 22px 28px; text-align:center;}
+  .cover .kicker{font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:13px; letter-spacing:.2em; color:var(--bark);}
+  .cover h1{margin:10px 0 0; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:56px; letter-spacing:.12em; line-height:1;}
+  .cover .sub{margin:12px 0 16px; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:17px; letter-spacing:.14em; color:var(--bark);}
+  .cover .hero{margin:20px auto 4px; width:88%; max-width:340px;}
+  .cover .hero img{width:100%; height:auto; display:block;}
+  .cover .lead{margin:14px 0 0; font-size:15px; line-height:2; color:var(--sub);}
+  .scrollcue{margin-top:20px; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:13px; color:var(--bark); letter-spacing:.14em;}
+  .scrollcue span{display:block; margin-top:6px; font-size:18px; animation:bob 1.8s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+
+  /* ---------- 場面 ---------- */
+  .scene{padding:28px 0 36px;}
+  .scene .no{display:flex; align-items:center; gap:10px; margin:0 4px 12px; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:13px; letter-spacing:.16em; color:var(--bark);}
+  .scene .no::after{content:""; flex:1; height:1.5px; background:linear-gradient(90deg, rgba(111,82,56,.45), rgba(111,82,56,0));}
+  .scene h2{margin:0 4px 14px; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:23px; line-height:1.5; letter-spacing:.06em;}
+  .pic{border-radius:10px; overflow:hidden; border:1.5px solid var(--ink); background:var(--paper); box-shadow:0 10px 26px rgba(43,38,34,.14);}
+  .pic img{display:block; width:100%; height:auto; aspect-ratio:4/5; object-fit:cover;}
+  .text{margin:18px 4px 0; font-size:17px; line-height:2.15; letter-spacing:.03em;}
+  .text p{margin:0 0 .6em;}
+  .text .quote{font-weight:600;}
+  /* ウッポのせりふ（場面4・5） */
+  .voice{position:relative; margin:18px 0 0; padding:18px 18px 16px; background:var(--washi2); border:2px solid var(--ink); border-radius:16px; font-family:"Zen Maru Gothic",sans-serif; font-weight:500; font-size:17px; line-height:2.05;}
+  .voice::before{content:""; position:absolute; top:-12px; left:34px; width:20px; height:20px; background:var(--washi2); border-left:2px solid var(--ink); border-top:2px solid var(--ink); transform:rotate(45deg);}
+  .voice .who{display:inline-block; margin-bottom:4px; font-weight:700; font-size:13px; letter-spacing:.14em; color:#fff; background:var(--leaf); border-radius:999px; padding:2px 12px;}
+  .voice p{margin:0;}
+  .card-pic{background:transparent; border:none; box-shadow:none; overflow:visible; max-width:300px; margin:0 auto;}
+  .card-pic img{aspect-ratio:auto; filter:drop-shadow(0 10px 18px rgba(43,38,34,.22)); border-radius:4px;}
+
+  /* ふわっと出る */
+  .reveal{opacity:0; transform:translateY(22px); transition:opacity .9s ease, transform .9s ease;}
+  .reveal.on{opacity:1; transform:none;}
+  @media (prefers-reduced-motion: reduce){ .reveal{opacity:1; transform:none; transition:none;} .scrollcue span{animation:none;} html{scroll-behavior:auto;} }
+
+  /* ---------- 遊び方・地図 ---------- */
+  .block{padding:22px 0 30px;}
+  .block .in{padding:24px 18px 22px;}
+  .block h2{margin:0 0 4px; text-align:center; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:22px; letter-spacing:.1em;}
+  .block .strip{margin:10px 0 18px;}
+  .steps{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px;}
+  .steps li{display:flex; gap:14px; align-items:flex-start; font-family:"Zen Maru Gothic",sans-serif; font-weight:500; font-size:16px; line-height:1.85;}
+  .steps .n{flex:none; width:34px; height:34px; border-radius:50%; background:var(--ink); color:var(--washi2); font-weight:700; font-size:16px; display:flex; align-items:center; justify-content:center; margin-top:2px;}
+  .steps small{display:block; font-size:13px; color:var(--bark); line-height:1.7;}
+  .map{margin:4px 0 0;}
+  .map svg{display:block; width:100%; height:auto; border-radius:10px; border:1.5px solid var(--ink); background:#f7f1e3;}
+  .map .cap{margin:14px 2px 0; font-family:"Zen Maru Gothic",sans-serif; font-weight:500; font-size:15px; line-height:1.9;}
+  .map .cap b{font-weight:700;}
+  .map .note{margin:6px 2px 0; font-size:12px; color:var(--bark); font-family:"Zen Maru Gothic",sans-serif;}
+  .btn2{display:flex; align-items:center; justify-content:center; gap:8px; margin:16px auto 0; width:100%; min-height:50px; border:2px solid var(--ink); border-radius:999px; background:var(--paper); color:var(--ink); text-decoration:none; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:16px; letter-spacing:.06em;}
+  .btn2:active{background:var(--washi);}
+  .source{margin:8px 4px 0; text-align:center; font-size:12.5px; line-height:1.9; color:var(--sub);}
+
+  /* ---------- 下に固定の［ARを体験する］ ---------- */
+  .dock{position:fixed; left:0; right:0; bottom:0; z-index:50; padding:12px 16px calc(12px + env(safe-area-inset-bottom,0)); background:linear-gradient(180deg, rgba(239,231,214,0) 0%, rgba(239,231,214,.94) 34%, var(--washi) 100%);}
+  .cta{display:flex; flex-direction:column; align-items:center; justify-content:center; max-width:488px; margin:0 auto; min-height:60px; border-radius:999px; background:var(--ink); color:var(--washi2); text-decoration:none; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:19px; letter-spacing:.1em; box-shadow:0 7px 0 #17130f, 0 12px 22px rgba(0,0,0,.25); transition:transform .08s, box-shadow .08s;}
+  .cta:active{transform:translateY(4px); box-shadow:0 3px 0 #17130f, 0 6px 12px rgba(0,0,0,.25);}
+  .cta small{font-weight:500; font-size:11.5px; letter-spacing:.14em; opacity:.85; margin-top:1px;}
+  :focus-visible{outline:3px solid var(--leaf); outline-offset:3px;}
 </style>
 </head>
 <body>
 
-  <a-scene
-    mindar-image="imageTargetSrc: ./targets.mind?v=3; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
-    color-space="sRGB"
-    renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true; alpha: true"
-    vr-mode-ui="enabled: false"
-    device-orientation-permission-ui="enabled: false">
+<main class="wrap">
 
-    <a-assets timeout="15000">
-      <a-asset-item id="uppoModel" src="uppo7.glb"></a-asset-item>
-    </a-assets>
-
-    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-    <a-entity light="type: hemisphere; color: #fff6e6; groundColor: #6a7a4a; intensity: 1.05"></a-entity>
-    <a-entity light="type: directional; color: #fff; intensity: 0.55" position="1 2 1.5"></a-entity>
-
-    <a-entity id="target" mindar-image-target="targetIndex: 0" uppo-experience>
-      <a-entity id="stage" rotation="0 0 0" scale="0.6 0.6 0.6">
-        <a-entity id="uppo" gltf-model="#uppoModel"></a-entity>
-        <a-entity id="leaves" position="0 1.05 0"></a-entity>
-        <a-entity id="roses"  position="0 0 0"></a-entity>
-      </a-entity>
-    </a-entity>
-  </a-scene>
-
-  <div id="hud">
-    <div id="title">ウッポ<small>〜 靱公園のねむり番 〜</small></div>
-    <div id="debug"></div>
-    <div id="hint" style="opacity:0">マーカーカードにかざしてね</div>
-    <div id="farewell">
-      <div class="fw-lead">ありがとう。<br>また、ここで ねむっているね。</div>
-      <div class="fw-sub">── 物語が、木を守る。</div>
-      <div class="strip"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
-    </div>
-
-    <button id="stampBtn">スタンプ帳<span id="stampDot"></span></button>
-
-    <div id="getFx">
-      <div class="gf-card">
-        <div class="gf-seal">印</div>
-        <div class="gf-name"></div>
-        <div class="gf-sub">やり切った しるし</div>
-      </div>
-    </div>
-
-    <div id="stampSheet">
-      <div class="sb-card">
-        <div class="sb-head">
-          <div>
-            <div class="sb-title">スタンプ帳</div>
-            <div class="sb-kicker">靱公園 ねむり番めぐり</div>
-          </div>
-          <div class="sb-count"><span id="stampCount">0 / 4</span><small>あつめた印</small></div>
-        </div>
-        <div class="sb-strip"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
-        <div id="stampList"></div>
-        <p class="sb-foot">① 御神木で ウッポを 起こすと 印が おされるよ。<br>ほかの スポットは これから ふえていく よてい。</p>
-        <button id="stampClose">とじる</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="start">
-    <div id="card"><div class="inner">
+  <!-- 表紙 -->
+  <header class="cover">
+    <div class="frame"><div class="in">
+      <div class="kicker"><ruby>靱<rt>うつぼ</rt></ruby>公園 AR ものがたり</div>
       <h1>ウッポ</h1>
-      <div class="sub">〜 靱公園のねむり番 〜</div>
-      <div class="strip"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
-      <p class="lead">靱公園の御神木で、眠る木霊にそっと触れると、<br>目を覚まし、若葉が芽吹き、バラが咲き広がる。</p>
-      <button id="startBtn">はじめる<span class="k">カメラを ゆるして ください</span></button>
-      <div id="note">靱公園AR ・ WebXRで、木霊にふれる</div>
+      <div class="sub">〜 <ruby>靱<rt>うつぼ</rt></ruby>公園のねむり番 〜</div>
+      <div class="strip" aria-hidden="true"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
+      <div class="hero"><img src="img/cover.webp" width="640" height="581" alt="クローバーの茂みから若葉がのぞいている。そばに赤いバラと小さな鳥居"></div>
+      <p class="lead">この公園には、大きな木を まもってきた<br>小さな ねむり番が いるのです。</p>
+      <div class="scrollcue">ものがたりを よむ<span aria-hidden="true">↓</span></div>
     </div></div>
-  </div>
+  </header>
 
+  <!-- 場面1 -->
+  <section class="scene reveal" aria-labelledby="s1">
+    <div class="no">その1</div>
+    <h2 id="s1">むかし、ここは <ruby>飛行場<rt>ひこうじょう</rt></ruby>だった</h2>
+    <div class="pic"><img src="img/scene1.webp" width="720" height="900" loading="lazy" alt="夕焼けの広い飛行場。原っぱの真ん中に大きな楠が一本立ち、遠くに小さなプロペラ機が見える"></div>
+    <div class="text">
+      <p>むかし、この公園の あたりは <ruby>戦争<rt>せんそう</rt></ruby>で <ruby>焼<rt>や</rt></ruby>けてしまいました。</p>
+      <p>そのあと、アメリカ<ruby>軍<rt>ぐん</rt></ruby>の <ruby>飛行場<rt>ひこうじょう</rt></ruby>が つくられました。</p>
+    </div>
+  </section>
+
+  <!-- 場面2 -->
+  <section class="scene reveal" aria-labelledby="s2">
+    <div class="no">その2</div>
+    <h2 id="s2">大きな木が 切られそうになった</h2>
+    <div class="pic"><img src="img/scene2.webp" width="720" height="900" loading="lazy" alt="縄を結ばれた大きな楠の横で、黄色いブルドーザーが止まっている。葉がふしぎに光っている"></div>
+    <div class="text">
+      <p><ruby>飛行場<rt>ひこうじょう</rt></ruby>には、何百年も 生きてきた 大きな <ruby>楠<rt>くすのき</rt></ruby>が 立っていました。</p>
+      <p class="quote">「じゃまだから 切ってしまおう」——</p>
+      <p>そう決まりかけたとき、<ruby>機械<rt>きかい</rt></ruby>が 動かなくなったり、ふしぎなことが つづけて 起きたのです。</p>
+    </div>
+  </section>
+
+  <!-- 場面3 -->
+  <section class="scene reveal" aria-labelledby="s3">
+    <div class="no">その3</div>
+    <h2 id="s3">お話が 木を まもった</h2>
+    <div class="pic"><img src="img/scene3.webp" width="720" height="900" loading="lazy" alt="大きな楠の下で、おじいさんが子どもたちにお話をしている。後ろに小さな祠と赤い鳥居"></div>
+    <div class="text">
+      <p class="quote">「この木は <ruby>神<rt>かみ</rt></ruby>さまの木。切ってはいけない。」</p>
+      <p>そんな お話が 町に 広まり、<ruby>楠<rt>くすのき</rt></ruby>は 切られずに のこりました。</p>
+      <p>お話を つくって 木を まもったのは、町の <ruby>歴史<rt>れきし</rt></ruby>に くわしい人だったとも <ruby>伝<rt>つた</rt></ruby>えられています。</p>
+      <p>1952年、土地は <ruby>大阪市<rt>おおさかし</rt></ruby>に かえされ、1955年、ここは みどりの <ruby>靱<rt>うつぼ</rt></ruby>公園に なりました。</p>
+    </div>
+  </section>
+
+  <!-- 場面4 -->
+  <section class="scene reveal" aria-labelledby="s4">
+    <div class="no">その4</div>
+    <h2 id="s4">ねむり番の ウッポ</h2>
+    <div class="pic"><img src="img/scene4.webp" width="582" height="727" loading="lazy" alt="眠っているウッポと、そばに咲く赤いバラ"></div>
+    <div class="voice">
+      <span class="who">ウッポ</span>
+      <p>「……ふわぁ。ぼくは ウッポ。<br>あの <ruby>楠<rt>くすのき</rt></ruby>のそばで、ずっと ねむり番を してきた <ruby>木霊<rt>こだま</rt></ruby>だよ。<br>お話が 木を まもってくれたから、ぼくも ここで <ruby>眠<rt>ねむ</rt></ruby>っていられるんだ。」</p>
+    </div>
+  </section>
+
+  <!-- 場面5 -->
+  <section class="scene reveal" aria-labelledby="s5">
+    <div class="no">その5</div>
+    <h2 id="s5">そっと 起こしてみよう</h2>
+    <div class="pic card-pic"><img src="img/card.webp" width="640" height="897" loading="lazy" alt="ウッポのマーカーカード。クローバーの茂みから若葉がのぞき、QRコードとバラと鳥居が描かれている"></div>
+    <div class="voice">
+      <span class="who">ウッポ</span>
+      <p>「でもね、ときどき だれかに 起こしてほしく なるんだ。<br>この カードに カメラを むけて、そっと 画面に ふれてみて。<br>ぼくが 起きたら、バラが さくよ。」</p>
+    </div>
+  </section>
+
+  <!-- 遊び方 -->
+  <section class="block reveal" id="howto" aria-labelledby="h-how">
+    <div class="frame"><div class="in">
+      <h2 id="h-how">あそびかた</h2>
+      <div class="strip" aria-hidden="true"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
+      <ol class="steps">
+        <li><span class="n">1</span><div>ブースにある「ウッポのカード」を 見つける<small>上の その5 の絵と おなじ カードです</small></div></li>
+        <li><span class="n">2</span><div>下の［ARを体験する］を おす<small>カメラの <ruby>許可<rt>きょか</rt></ruby>を きかれたら［<ruby>許可<rt>きょか</rt></ruby>］を おしてね</small></div></li>
+        <li><span class="n">3</span><div>カードに かざして、画面を タップ<small>ゆびで 左右に なぞると、ウッポが まわるよ</small></div></li>
+      </ol>
+    </div></div>
+  </section>
+
+  <!-- 地図 -->
+  <section class="block reveal" id="map" aria-labelledby="h-map">
+    <div class="frame"><div class="in">
+      <h2 id="h-map">本物の <ruby>御神木<rt>ごしんぼく</rt></ruby>に 会いに行こう</h2>
+      <div class="strip" aria-hidden="true"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
+      <figure class="map" style="margin:0">
+        <svg viewBox="0 0 360 250" role="img" aria-labelledby="mapTitle">
+          <title id="mapTitle">靱公園のかんたんな地図。なにわ筋をはさんで西園と東園があり、楠永神社は公園のまん中、なにわ筋ぞいの西側にある。ブースは東園のあたり。</title>
+          <!-- 方位 -->
+          <g transform="translate(330,30)" font-family="Zen Maru Gothic, sans-serif">
+            <path d="M0 -14 L6 4 L0 0 L-6 4 Z" fill="#2b2622"/>
+            <text x="0" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="#2b2622">北</text>
+          </g>
+          <!-- 西園 -->
+          <rect x="18" y="68" width="112" height="140" rx="26" fill="#cfe0b4" stroke="#6a9b41" stroke-width="2"/>
+          <rect x="42" y="96" width="62" height="44" rx="6" fill="#e8efd9" stroke="#6a9b41" stroke-width="1.2" stroke-dasharray="3 3"/>
+          <text x="73" y="123" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="10" fill="#4d6b31">テニスコート</text>
+          <text x="74" y="172" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="15" font-weight="700" fill="#3e5a28">西園</text>
+          <!-- なにわ筋 -->
+          <rect x="140" y="14" width="26" height="226" fill="#e2d7c2"/>
+          <line x1="153" y1="18" x2="153" y2="236" stroke="#fffaf0" stroke-width="2" stroke-dasharray="8 7"/>
+          <text x="153" y="44" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="11" font-weight="700" fill="#6f5238" writing-mode="vertical-rl" letter-spacing="2">なにわ筋</text>
+          <!-- 東園 -->
+          <path d="M176 70 Q176 52 196 52 L318 64 Q342 68 342 96 L342 170 Q342 206 312 206 L196 206 Q176 206 176 186 Z" fill="#cfe0b4" stroke="#6a9b41" stroke-width="2"/>
+          <circle cx="232" cy="104" r="11" fill="#e9b7b9" stroke="#b3323a" stroke-width="1.2"/>
+          <text x="232" y="128" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="10" fill="#8a2a30">バラ園</text>
+          <text x="300" y="112" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="15" font-weight="700" fill="#3e5a28">東園</text>
+          <!-- ブース（おおよそ） -->
+          <circle cx="272" cy="160" r="22" fill="rgba(43,38,34,.08)" stroke="#2b2622" stroke-width="1.6" stroke-dasharray="4 3"/>
+          <text x="272" y="157" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="10.5" font-weight="700" fill="#2b2622">ブース</text>
+          <text x="272" y="170" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="8.5" fill="#2b2622">このあたり</text>
+          <!-- 道すじ -->
+          <path d="M252 170 Q200 200 130 196" fill="none" stroke="#b3323a" stroke-width="2" stroke-dasharray="2 5" stroke-linecap="round"/>
+          <!-- 楠永神社・御神木 -->
+          <g transform="translate(118,196)">
+            <circle r="17" fill="#fff8ea" stroke="#b3323a" stroke-width="2.2"/>
+            <g fill="#c4563a">
+              <rect x="-9" y="-9" width="18" height="2.6" rx="1"/>
+              <rect x="-7" y="-5" width="14" height="1.8"/>
+              <rect x="-6" y="-8" width="2.2" height="16"/>
+              <rect x="3.8" y="-8" width="2.2" height="16"/>
+            </g>
+          </g>
+          <rect x="22" y="220" width="130" height="24" rx="12" fill="#b3323a"/>
+          <text x="87" y="236" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="11.5" font-weight="700" fill="#fff">楠永神社・御神木</text>
+        </svg>
+        <figcaption class="cap"><b>楠永神社（くすながじんじゃ）</b><br>公園の まん中、なにわ筋ぞいに あります。大きな <ruby>楠<rt>くすのき</rt></ruby>が 目じるしです。</figcaption>
+        <p class="note">※ 地図は おおまかな 位置です。</p>
+      </figure>
+      <a class="btn2" href="https://www.google.com/maps/search/?api=1&amp;query=%E6%A5%A0%E6%B0%B8%E7%A5%9E%E7%A4%BE%20%E5%A4%A7%E9%98%AA%E5%B8%82%E8%A5%BF%E5%8C%BA%E9%9D%B1%E6%9C%AC%E7%94%BA" target="_blank" rel="noopener">地図アプリで開く <span aria-hidden="true">↗</span></a>
+    </div></div>
+  </section>
+
+  <p class="source reveal">この ものがたりは、<ruby>靱<rt>うつぼ</rt></ruby>公園の <ruby>歴史<rt>れきし</rt></ruby>と、<br>楠永神社に <ruby>伝<rt>つた</rt></ruby>わる お話を もとにした ファンタジーです。</p>
+
+</main>
+
+<!-- 下に固定：ARを体験する（?go=1 でAR画面のスタート画面を飛ばす） -->
+<div class="dock">
+  <a class="cta" href="ar.html?go=1">ARを体験する<small>カメラを つかいます</small></a>
+</div>
+
+<script>
+  // 場面がスクロールで入ってきたら、ふわっと表示
+  (function(){
+    var els = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) { els.forEach(function(e){ e.classList.add('on'); }); return; }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if (en.isIntersecting) { en.target.classList.add('on'); io.unobserve(en.target); } });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
+    els.forEach(function(e){ io.observe(e); });
+  })();
+</script>
 </body>
 </html>
