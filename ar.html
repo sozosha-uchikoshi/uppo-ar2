@@ -32,13 +32,65 @@ window.UPPO_CONFIG = {
 
   /* ---- スタンプ帳（A案） ---- */
   STAMP_KEY:  'uppo_stamps_v1',   // localStorage 保存キー
-  STAMP_NAME: 'めざめの栞',         // 手に入る印の名前（好みで変更可）
-  STAMP_SPOTS: [                  // 先頭=今回の旗艦スポット。以降=次フェーズ（近日）
-    { id:'uppo',   name:'ウッポ（御神木）', live:true  },
-    { id:'rose',   name:'バラ園',          live:false },
-    { id:'keyaki', name:'ケヤキ並木',       live:false },
-    { id:'hiroba', name:'西園ひろば',        live:false },
+  STAMP_SPOTS: [                  // 10/10イベント用：2つだけ（どちらから押してもOK）
+    { id:'uppo',     name:'ウッポを 起こした',     place:'ブースの カード', live:true },
+    { id:'shinboku', name:'本物の 御神木に 会えた', place:'楠永神社の 鳥居の 前', live:true },
   ],
+
+  /* ---- v16 神社モード（targets.mind の 1・2番＝楠永神社の正面写真） ---- */
+  // x,y＝ウッポの足元の位置（写真の横幅=1、中心=0、上が+）/ z＝手前への出し量 / h＝ウッポの高さ（写真の横幅=1）
+  // 現地で「ずれている」ときは、ここの数字を少しずつ変える
+  SHRINE: {
+    1: { x: 0.06,  y: -0.41, z: 0.05, h: 0.25 },   // IMG_3933（鳥居の正面・近め）
+    2: { x: -0.04, y: -0.31, z: 0.05, h: 0.19 },   // IMG_3937（鳥居の正面・少し引き）
+  },
+  SHRINE_ROT_Y: 0,                // ウッポが後ろを向くときは 180
+  SHRINE_ROSE_RINGS: [ { r: 0.55, count: 7 } ],
+};
+
+/* ---- スタンプ帳（カード・神社で共通） ---- */
+window.UppoStamps = {
+  cfg(){ return window.UPPO_CONFIG; },
+  load(){ try{ return JSON.parse(localStorage.getItem(this.cfg().STAMP_KEY))||{}; }catch(e){ return {}; } },
+  save(o){ try{ localStorage.setItem(this.cfg().STAMP_KEY, JSON.stringify(o)); }catch(e){} },
+  today(){ const d=new Date(), z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'.'+z(d.getMonth()+1)+'.'+z(d.getDate()); },
+  spot(id){ return this.cfg().STAMP_SPOTS.find(sp=>sp.id===id); },
+  isComplete(store){ store=store||this.load(); return this.cfg().STAMP_SPOTS.every(sp=>store[sp.id]&&store[sp.id].earned); },
+  award(id){
+    const store=this.load();
+    if(store[id]&&store[id].earned){ this.render(); this.refreshDot(); return false; }
+    store[id]={earned:true, date:this.today()}; this.save(store);
+    this.flourish(id); this.render(); this.refreshDot();
+    if(this.isComplete(store)) setTimeout(()=>this.showComplete(), 2900);
+    return true;
+  },
+  flourish(id){ const el=document.getElementById('getFx'); if(!el)return; const sp=this.spot(id);
+    const nm=el.querySelector('.gf-name'); if(nm) nm.textContent='「'+(sp?sp.name:'')+'」の 印を てにいれた！';
+    el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), 2600); },
+  showComplete(){ const el=document.getElementById('complete'); if(!el)return;
+    el.style.display='flex'; requestAnimationFrame(()=>el.classList.add('show'));
+    clearTimeout(this._ct); this._ct=setTimeout(()=>this.hideComplete(), 7000); },
+  hideComplete(){ const el=document.getElementById('complete'); if(!el)return;
+    el.classList.remove('show'); setTimeout(()=>{ el.style.display='none'; },400); },
+  refreshDot(){ const dot=document.getElementById('stampDot'); if(!dot)return;
+    const s=this.load(); dot.style.display=this.cfg().STAMP_SPOTS.some(sp=>s[sp.id]&&s[sp.id].earned)?'block':'none'; },
+  render(){
+    const wrap=document.getElementById('stampList'); if(!wrap)return;
+    const store=this.load(), spots=this.cfg().STAMP_SPOTS;
+    const got=spots.filter(sp=>store[sp.id]&&store[sp.id].earned).length;
+    const cnt=document.getElementById('stampCount'); if(cnt) cnt.textContent=got+' / '+spots.length;
+    wrap.innerHTML='';
+    spots.forEach((sp,i)=>{
+      const earned=store[sp.id]&&store[sp.id].earned;
+      const item=document.createElement('div');
+      item.className='sb-item'+(earned?' got':'');
+      const disc=earned?'✓':['①','②','③','④'][i];
+      const date=earned?('獲得 '+store[sp.id].date):('まだ ・ '+sp.place);
+      item.innerHTML='<div class="sb-disc">'+disc+'</div><div class="sb-meta"><div class="sb-name">'+sp.name+'</div><div class="sb-date">'+date+'</div></div>';
+      wrap.appendChild(item);
+    });
+    const done=document.getElementById('sbDone'); if(done) done.style.display=this.isComplete(store)?'block':'none';
+  },
 };
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -212,7 +264,9 @@ AFRAME.registerComponent('uppo-experience', {
     if(sheet){ ['pointerdown','pointerup'].forEach(ev=>sheet.addEventListener(ev,e=>e.stopPropagation())); sheet.addEventListener('click',(e)=>{ if(e.target===sheet) this._closeBook(); }); }
     this._refreshStampBtn();
 
-    this._setHint('マーカーカードにかざしてね');
+    this._setHint(window.UPPO_HINT_DEFAULT);
+    const cp=document.getElementById('complete');
+    if(cp){ ['pointerdown','pointerup'].forEach(ev=>cp.addEventListener(ev,e=>e.stopPropagation())); cp.addEventListener('click',()=>window.UppoStamps.hideComplete()); }
   },
   remove: function () {
     window.removeEventListener('pointerdown',   this._onDown);
@@ -287,10 +341,12 @@ AFRAME.registerComponent('uppo-experience', {
   onFound: function () {
     this._set('target','発見 ✓'); this.el.object3D.visible=true;
     if (this.state==='idle') this._toSleeping();
+    if (this.state==='farewell') this._setFarewell(true);   // 神社モードで隠れた吹き出しを戻す
     this._setHint(this.state==='farewell'?'ゆびで回せる ・ もう一度タップ':'画面をタップして起こそう');
   },
-  onLost: function () { this._set('target','ロスト'); },
-  onTap: function () { if(this.state==='sleeping')this._wake(); else if(this.state==='farewell')this._reset(); },
+  onLost: function () { this._set('target','ロスト'); this._setHint(window.UPPO_HINT_DEFAULT); },
+  onTap: function () { if(!this.el.object3D.visible) return;   // 神社モード中などカードが見えていない時は反応しない
+    if(this.state==='sleeping')this._wake(); else if(this.state==='farewell')this._reset(); },
 
   _toSleeping: function(){ this.state='sleeping'; this._set('state','sleeping'); this._setHint('画面をタップして起こそう'); this._setFarewell(false); },
   _wake: function(){
@@ -317,33 +373,9 @@ AFRAME.registerComponent('uppo-experience', {
   _loadStamps: function(){ try{ return JSON.parse(localStorage.getItem(this.CFG.STAMP_KEY))||{}; }catch(e){ return {}; } },
   _saveStamps: function(o){ try{ localStorage.setItem(this.CFG.STAMP_KEY, JSON.stringify(o)); }catch(e){} },
   _todayStr: function(){ const d=new Date(), z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'.'+z(d.getMonth()+1)+'.'+z(d.getDate()); },
-  _awardStamp: function(){
-    const store=this._loadStamps();
-    const first=!(store.uppo && store.uppo.earned);
-    if(first){ store.uppo={earned:true, date:this._todayStr()}; this._saveStamps(store); this._flourish(); }
-    this._renderStampBook(); this._refreshStampBtn();
-  },
-  _refreshStampBtn: function(){ const dot=document.getElementById('stampDot'); if(!dot)return;
-    const s=this._loadStamps(); dot.style.display=(s.uppo&&s.uppo.earned)?'block':'none'; },
-  _flourish: function(){ const el=document.getElementById('getFx'); if(!el)return;
-    const nm=el.querySelector('.gf-name'); if(nm) nm.textContent='「'+this.CFG.STAMP_NAME+'」を てにいれた！';
-    el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), 2600); },
-  _renderStampBook: function(){
-    const wrap=document.getElementById('stampList'); if(!wrap)return;
-    const store=this._loadStamps(), spots=this.CFG.STAMP_SPOTS;
-    const got=spots.filter(sp=>store[sp.id]&&store[sp.id].earned).length;
-    const cnt=document.getElementById('stampCount'); if(cnt) cnt.textContent=got+' / '+spots.length;
-    wrap.innerHTML='';
-    spots.forEach(sp=>{
-      const earned=store[sp.id]&&store[sp.id].earned;
-      const item=document.createElement('div');
-      item.className='sb-item'+(earned?' got':(sp.live?'':' soon'));
-      const disc=earned?'✓':(sp.live?'？':'近日');
-      const date=earned?('獲得 '+store[sp.id].date):(sp.live?'まだ':'これから');
-      item.innerHTML='<div class="sb-disc">'+disc+'</div><div class="sb-meta"><div class="sb-name">'+sp.name+'</div><div class="sb-date">'+date+'</div></div>';
-      wrap.appendChild(item);
-    });
-  },
+  _awardStamp: function(){ window.UppoStamps.award('uppo'); },
+  _refreshStampBtn: function(){ window.UppoStamps.refreshDot(); },
+  _renderStampBook: function(){ window.UppoStamps.render(); },
   _openBook: function(){ this._renderStampBook(); const s=document.getElementById('stampSheet');
     if(s){ s.style.display='flex'; requestAnimationFrame(()=>s.classList.add('open')); } },
   _closeBook: function(){ const s=document.getElementById('stampSheet');
@@ -384,6 +416,83 @@ AFRAME.registerComponent('uppo-experience', {
     el.textContent=`ビルド: v15 ✅（回転＋距離）\nカメラ: ${this.dbg.AR}\nモデル: ${this.dbg.model}\nマーカー: ${this.dbg.target}\n状態: ${this.dbg.state}`;},
 });
 
+
+/* shrine-experience v16: 楠永神社の前で、起きたウッポが御神木の根元に現れる */
+window.UPPO_HINT_DEFAULT = 'カードか、神社の 鳥居に かざしてね';
+AFRAME.registerComponent('shrine-experience', {
+  schema: { idx: { type: 'int', default: 1 } },
+  init: function () {
+    const C = this.CFG = window.UPPO_CONFIG;
+    const P = C.SHRINE[this.data.idx] || { x:0, y:-0.4, z:0.05, h:0.25 };
+    this.H = P.h;
+    this.stage  = this.el.querySelector('.sh-stage');
+    this.uppo   = this.el.querySelector('.sh-uppo');
+    this.leaves = this.el.querySelector('.sh-leaves');
+    this.roses  = this.el.querySelector('.sh-roses');
+    this.stage.object3D.position.set(P.x, P.y, P.z);
+    this.stage.object3D.rotation.set(0, (C.SHRINE_ROT_Y||0) * Math.PI/180, 0);
+    this.stage.object3D.scale.set(0.0001, 0.0001, 0.0001);   // 最初は見えない→見つけたらポンと出る
+    this.baseS = null; this.spinY = 0; this.footY = 0; this.shown = false;
+    this._down = false; this._moved = 0; this._lastX = 0; this._autoResumeAt = 0;
+
+    // 若葉・バラはカード版と同じ作り方（バラの輪だけ神社用）
+    const proto = AFRAME.components['uppo-experience'].Component.prototype;
+    proto._buildLeaves.call(this);
+    const saved = this.CFG; this.CFG = Object.assign({}, C, { ROSE_RINGS: C.SHRINE_ROSE_RINGS });
+    proto._buildRoses.call(this); this.CFG = saved;
+
+    this.uppo.addEventListener('model-loaded', () => {
+      const s = 1 / C.NATIVE_H;                    // 身長1にそろえる（全体の大きさは stage の h で決まる）
+      this.baseS = s; this.uppo.object3D.scale.set(s, s, s);
+      this.footY = -C.NATIVE_MIN_Y * s; this.uppo.object3D.position.set(0, this.footY, 0);
+      this.leaves.object3D.position.y = C.HEAD_Y_RATIO;
+    });
+
+    this.el.addEventListener('targetFound', () => this.onFound());
+    this.el.addEventListener('targetLost',  () => this.onLost());
+    this._onDown = (e) => { this._down = true; this._moved = 0; this._lastX = e.clientX; this._autoResumeAt = Infinity; };
+    this._onMove = (e) => { if (!this._down) return; const dx = e.clientX - this._lastX; this._lastX = e.clientX; this._moved += Math.abs(dx);
+      if (this.el.object3D.visible) this.spinY += dx * C.SPIN_SENS; };
+    this._onUp = () => { if (!this._down) return; this._down = false; this._autoResumeAt = performance.now() + C.AUTO_RESUME_MS; };
+    window.addEventListener('pointerdown', this._onDown);
+    window.addEventListener('pointermove', this._onMove);
+    window.addEventListener('pointerup', this._onUp);
+    window.addEventListener('pointercancel', this._onUp);
+  },
+  remove: function () {
+    window.removeEventListener('pointerdown', this._onDown); window.removeEventListener('pointermove', this._onMove);
+    window.removeEventListener('pointerup', this._onUp); window.removeEventListener('pointercancel', this._onUp);
+  },
+  onFound: function () {
+    clearTimeout(this._lostT);
+    const talk = document.getElementById('shrineTalk'); if (talk) talk.style.opacity = '1';
+    const fw = document.getElementById('farewell'); if (fw) fw.style.opacity = '0';   // カードの吹き出しと重ならないように
+    const hint = document.getElementById('hint'); if (hint) { hint.textContent = 'おまいりの 人の じゃまに ならないように してね'; hint.style.opacity = '1'; hint.classList.add('small'); }
+    if (!this.shown) {
+      this.shown = true;
+      const h = this.H, st = this.stage.object3D, t0 = performance.now(), dur = 620;
+      const back = (t) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+      const step = (now) => { const p = Math.min(1, (now - t0) / dur), k = h * back(p); st.scale.set(k, k, k);
+        if (p < 1) requestAnimationFrame(step);
+        else { this.leaves.querySelectorAll('a-entity').forEach(l => l.emit('bloom')); this.roses.querySelectorAll('a-entity').forEach(r => r.emit('bloom')); } };
+      requestAnimationFrame(step);
+      setTimeout(() => window.UppoStamps.award('shinboku'), 1600);   // せりふが出てから、印をおす
+    }
+  },
+  onLost: function () {
+    this._lostT = setTimeout(() => {
+      const talk = document.getElementById('shrineTalk'); if (talk) talk.style.opacity = '0';
+      const hint = document.getElementById('hint'); if (hint) { hint.classList.remove('small'); hint.textContent = window.UPPO_HINT_DEFAULT; }
+    }, 900);
+  },
+  tick: function (time, dt) {
+    if (this.baseS == null || !this.el.object3D.visible) return;
+    const C = this.CFG, now = performance.now();
+    if (!this._down && now > this._autoResumeAt) this.spinY += C.AUTO_SPIN * ((dt || 16) / 1000);
+    this.uppo.object3D.rotation.y = this.spinY; this.leaves.object3D.rotation.y = this.spinY; this.roses.object3D.rotation.y = this.spinY;
+    this.uppo.object3D.position.y = this.footY + C.BOB_AMP * Math.sin(now / 1000 * C.BOB_SPEED);
+  },
+});
 </script>
 <style>
   :root{--washi:#efe7d6;--washi2:#f5efe1;--ink:#2b2622;--bark:#7a5230;--leaf:#6a9a3f;--rose:#b0202f;--gold:#b8892b;}
@@ -448,6 +557,24 @@ AFRAME.registerComponent('uppo-experience', {
   .sb-date{font-size:11px;color:var(--bark);margin-top:2px;font-weight:500;}
   .sb-foot{font-family:"Shippori Mincho",serif;font-size:11.5px;color:#5a4c3d;line-height:1.8;margin:14px 0 16px;}
   #stampClose{display:block;width:100%;pointer-events:auto;cursor:pointer;border:none;font-family:inherit;background:var(--ink);color:var(--washi2);font-weight:700;font-size:15px;padding:12px;border-radius:999px;letter-spacing:.08em;}
+  #hint.small{font-size:13px;padding:10px 18px;}
+  #shrineTalk{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0) + 60px);transform:translateX(-50%);width:min(86vw,350px);text-align:center;opacity:0;transition:opacity .6s;background:linear-gradient(180deg,var(--washi2),var(--washi));color:var(--ink);border:2px solid var(--ink);border-radius:14px;padding:18px 18px 16px;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  #farewell .fw-lead,#shrineTalk .fw-lead,#complete .cp-lead,#getFx .gf-name,#sbDone,.sb-foot{word-break:keep-all;overflow-wrap:anywhere;}
+  #shrineTalk .fw-lead{font-weight:700;font-size:17px;line-height:1.8;}
+  #shrineTalk ruby rt{font-size:.5em;color:var(--bark);}
+  #shrineTalk .fw-sub{margin-top:10px;font-family:"Shippori Mincho",serif;font-weight:600;font-size:12.5px;color:var(--bark);}
+  #shrineTalk .strip{display:flex;gap:5px;justify-content:center;margin-top:12px;}
+  #shrineTalk .strip i{width:34px;height:5px;border-radius:2px;display:block;}
+  #complete{position:absolute;inset:0;z-index:16;display:none;align-items:center;justify-content:center;padding:24px;background:rgba(20,16,12,.5);opacity:0;transition:opacity .4s;pointer-events:auto;}
+  #complete.show{opacity:1;}
+  #complete .cp-card{width:min(86vw,340px);text-align:center;background:linear-gradient(180deg,var(--washi2),var(--washi));border:2px solid var(--ink);border-radius:16px;padding:24px 20px 20px;box-shadow:0 16px 40px rgba(0,0,0,.5);transform:scale(.85);transition:transform .5s cubic-bezier(.2,1.4,.4,1);}
+  #complete.show .cp-card{transform:scale(1);}
+  #complete .cp-seals{display:flex;gap:10px;justify-content:center;margin-bottom:12px;}
+  #complete .cp-seals span{width:46px;height:46px;border-radius:50%;background:var(--leaf);color:#fff;font-weight:700;font-size:18px;display:flex;align-items:center;justify-content:center;border:2px solid var(--ink);}
+  #complete .cp-who{display:inline-block;font-weight:700;font-size:12px;letter-spacing:.14em;color:#fff;background:var(--leaf);border-radius:999px;padding:2px 12px;margin-bottom:6px;}
+  #complete .cp-lead{font-weight:700;font-size:17px;line-height:1.8;color:var(--ink);}
+  #complete .cp-close{margin-top:12px;font-size:11px;color:var(--bark);}
+  #sbDone{display:none;margin:12px 0 0;padding:10px 12px;border-radius:10px;background:rgba(106,154,63,.14);border:1.5px solid var(--leaf);font-weight:700;font-size:13px;line-height:1.7;text-align:center;color:var(--ink);}
   video{position:fixed !important;top:0 !important;left:0 !important;width:100% !important;height:100% !important;object-fit:cover !important;z-index:0 !important;}
   .a-canvas{z-index:1 !important;}
 </style>
@@ -455,7 +582,7 @@ AFRAME.registerComponent('uppo-experience', {
 <body>
 
   <a-scene
-    mindar-image="imageTargetSrc: ./targets.mind?v=3; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
+    mindar-image="imageTargetSrc: ./targets.mind?v=4; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
     color-space="sRGB"
     renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true; alpha: true"
     vr-mode-ui="enabled: false"
@@ -476,12 +603,33 @@ AFRAME.registerComponent('uppo-experience', {
         <a-entity id="roses"  position="0 0 0"></a-entity>
       </a-entity>
     </a-entity>
+
+    <!-- 楠永神社（鳥居の正面）：1＝近め、2＝少し引き。どちらで見つかっても同じ体験 -->
+    <a-entity mindar-image-target="targetIndex: 1" shrine-experience="idx: 1">
+      <a-entity class="sh-stage">
+        <a-entity class="sh-uppo" gltf-model="#uppoModel"></a-entity>
+        <a-entity class="sh-leaves"></a-entity>
+        <a-entity class="sh-roses"></a-entity>
+      </a-entity>
+    </a-entity>
+    <a-entity mindar-image-target="targetIndex: 2" shrine-experience="idx: 2">
+      <a-entity class="sh-stage">
+        <a-entity class="sh-uppo" gltf-model="#uppoModel"></a-entity>
+        <a-entity class="sh-leaves"></a-entity>
+        <a-entity class="sh-roses"></a-entity>
+      </a-entity>
+    </a-entity>
   </a-scene>
 
   <div id="hud">
     <div id="title">ウッポ<small>〜 靱公園のねむり番 〜</small></div>
     <div id="debug"></div>
-    <div id="hint" style="opacity:0">マーカーカードにかざしてね</div>
+    <div id="hint" style="opacity:0">カードか、神社の 鳥居に かざしてね</div>
+    <div id="shrineTalk">
+      <div class="fw-lead">「きて くれたんだね！<br>ここが ぼくの ねむる <ruby>楠<rt>くすのき</rt></ruby>だよ。<br>お話が まもってくれた、<br>本物の 木なんだ。」</div>
+      <div class="fw-sub">── 楠永神社の 御神木</div>
+      <div class="strip"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
+    </div>
     <div id="farewell">
       <div class="fw-lead">ありがとう。<br>また、ここで ねむっているね。</div>
       <div class="fw-sub">── 物語が、木を守る。</div>
@@ -499,6 +647,15 @@ AFRAME.registerComponent('uppo-experience', {
       </div>
     </div>
 
+    <div id="complete">
+      <div class="cp-card">
+        <div class="cp-seals"><span>✓</span><span>✓</span></div>
+        <div class="cp-who">ウッポ</div>
+        <div class="cp-lead">「ふたつの 印が そろったね。<br>これで きみも、<ruby>靱<rt>うつぼ</rt></ruby>公園の<br>ねむり番の なかまだよ。」</div>
+        <div class="cp-close">タップで とじる</div>
+      </div>
+    </div>
+
     <div id="stampSheet">
       <div class="sb-card">
         <div class="sb-head">
@@ -506,11 +663,12 @@ AFRAME.registerComponent('uppo-experience', {
             <div class="sb-title">スタンプ帳</div>
             <div class="sb-kicker">靱公園 ねむり番めぐり</div>
           </div>
-          <div class="sb-count"><span id="stampCount">0 / 4</span><small>あつめた印</small></div>
+          <div class="sb-count"><span id="stampCount">0 / 2</span><small>あつめた印</small></div>
         </div>
         <div class="sb-strip"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
         <div id="stampList"></div>
-        <p class="sb-foot">① カードで ウッポを 起こすと 印が おされるよ。<br>つぎは 本物の 御神木に 会いに行こう。<br>ほかの スポットは これから ふえていく よてい。</p>
+        <div id="sbDone">ふたつの 印が そろったね。<br>きみも、靱公園の ねむり番の なかまだよ。</div>
+        <p class="sb-foot">① カードで ウッポを 起こそう。<br>② 本物の 御神木の 前で、鳥居に カメラを むけよう。<br>ふたつ そろうと、ウッポから ひと言 あるよ。</p>
         <button id="stampClose">とじる</button>
       </div>
     </div>

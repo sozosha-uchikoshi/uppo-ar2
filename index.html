@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Shippori+Mincho:wght@500;600&display=swap" rel="stylesheet">
 <!-- 物語を読んでいる間に、AR用の3Dモデルを先に読み込んでおく（AR画面の起動を速くする） -->
 <link rel="prefetch" href="uppo7.glb">
-<link rel="prefetch" href="targets.mind?v=3">
+<link rel="prefetch" href="targets.mind?v=4">
 <style>
   :root{
     --washi:#efe7d6; --washi2:#f5efe1; --paper:#faf6ec;
@@ -30,7 +30,7 @@
   ruby rt{font-size:.5em; font-family:"Zen Maru Gothic",sans-serif; color:var(--bark); letter-spacing:0;}
   .wrap{max-width:520px; margin:0 auto; padding:0 16px;}
   /* 文章は「分かち書き」なので、スペースの位置で改行させる（単語の途中で切れないように） */
-  h1,h2,.text,.voice,.lead,.steps,.cap,.source{word-break:keep-all; overflow-wrap:anywhere; line-break:strict;}
+  h1,h2,.text,.voice,.lead,.steps,.cap,.source,.note{word-break:keep-all; overflow-wrap:anywhere; line-break:strict;}
   .strip{display:flex; gap:6px; justify-content:center;}
   .strip i{display:block; width:46px; height:6px; border-radius:2px;}
   .c-bark{background:var(--bark);} .c-leaf{background:var(--leaf);} .c-rose{background:var(--rose);}
@@ -86,6 +86,7 @@
   .map svg{display:block; width:100%; height:auto; border-radius:10px; border:1.5px solid var(--ink); background:#f7f1e3;}
   .map .cap{margin:14px 2px 0; font-family:"Zen Maru Gothic",sans-serif; font-weight:500; font-size:15px; line-height:1.9;}
   .map .cap b{font-weight:700;}
+  .map .shrine-ar{margin-top:12px; padding:12px 14px; border-radius:10px; background:rgba(106,155,65,.12); border:1.5px solid var(--leaf);}
   .map .note{margin:6px 2px 0; font-size:12px; color:var(--bark); font-family:"Zen Maru Gothic",sans-serif;}
   .btn2{display:flex; align-items:center; justify-content:center; gap:8px; margin:16px auto 0; width:100%; min-height:50px; border:2px solid var(--ink); border-radius:999px; background:var(--paper); color:var(--ink); text-decoration:none; font-family:"Zen Maru Gothic",sans-serif; font-weight:700; font-size:16px; letter-spacing:.06em;}
   .btn2:active{background:var(--washi);}
@@ -223,6 +224,8 @@
           <text x="87" y="236" text-anchor="middle" font-family="Zen Maru Gothic, sans-serif" font-size="11.5" font-weight="700" fill="#fff">楠永神社・御神木</text>
         </svg>
         <figcaption class="cap"><b>楠永神社（くすながじんじゃ）</b><br>公園の まん中、なにわ筋ぞいに あります。大きな <ruby>楠<rt>くすのき</rt></ruby>が 目じるしです。</figcaption>
+        <p class="cap shrine-ar"><b>神社に ついたら</b><br>下の［ARを体験する］を おして、<ruby>鳥居<rt>とりい</rt></ruby>の 正面から カメラを むけてね。<ruby>御神木<rt>ごしんぼく</rt></ruby>の ねもとで、ウッポが まっているよ。</p>
+        <p class="note">※ おまいりの 人の じゃまに ならないように してね。</p>
         <p class="note">※ 地図は おおまかな 位置です。</p>
       </figure>
       <a class="btn2" href="https://www.google.com/maps/search/?api=1&amp;query=%E6%A5%A0%E6%B0%B8%E7%A5%9E%E7%A4%BE%20%E5%A4%A7%E9%98%AA%E5%B8%82%E8%A5%BF%E5%8C%BA%E9%9D%B1%E6%9C%AC%E7%94%BA" target="_blank" rel="noopener">地図アプリで開く <span aria-hidden="true">↗</span></a>
