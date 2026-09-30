@@ -93,6 +93,22 @@ window.UppoStamps = {
   },
 };
 
+/* ---- v5：URLに「?reset=1」をつけて開くと、ウッポの印だけを消す（撮り直し・見本用スマホ用） ---- */
+(function(){
+  try{
+    const u=new URL(location.href);
+    if(u.searchParams.get('reset')!=='1') return;
+    localStorage.removeItem(window.UPPO_CONFIG.STAMP_KEY);      // ウッポの印だけ消す（ほかのサイトには影響なし）
+    u.searchParams.delete('reset');                              // URLから ?reset=1 を消す → 読み込み直しても再び消えない
+    history.replaceState(null,'',u.pathname+u.search+u.hash);
+    window.addEventListener('DOMContentLoaded',()=>{
+      const n=document.getElementById('resetNote'); if(!n) return;
+      const c=document.getElementById('resetCount'); if(c) c.textContent='0 / '+window.UPPO_CONFIG.STAMP_SPOTS.length;
+      n.style.display='block';
+    });
+  }catch(e){}
+})();
+
 window.addEventListener('DOMContentLoaded', () => {
   const cfg = window.UPPO_CONFIG;
   const scene = document.querySelector('a-scene');
@@ -509,6 +525,8 @@ AFRAME.registerComponent('shrine-experience', {
   #farewell .strip{display:flex;gap:5px;justify-content:center;margin-top:14px;}
   #farewell .strip i{width:34px;height:5px;border-radius:2px;display:block;}
   #debug{position:absolute;left:10px;top:calc(env(safe-area-inset-top,0) + 56px);display:none;background:rgba(0,0,0,.62);color:#9effa0;font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;white-space:pre;padding:8px 10px;border-radius:8px;border:1px solid rgba(158,255,160,.3);}
+  #resetNote{display:none;margin:0 auto 16px;max-width:280px;border:1.5px solid var(--leaf);background:#e8f0dd;border-radius:12px;padding:9px 12px;font-weight:700;font-size:14px;color:var(--ink);text-align:center;}
+  #resetNote small{display:block;margin-top:3px;font-family:"Shippori Mincho",serif;font-weight:600;font-size:12px;color:var(--bark);}
   #start{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:26px;transition:opacity .4s;background:radial-gradient(120% 90% at 50% 0%, #f6f0e2 0%, var(--washi) 55%, #e7dcc6 100%);}
   #card{width:min(92vw,420px);border:2px solid var(--ink);border-radius:6px;padding:8px;background:var(--washi2);box-shadow:0 18px 50px rgba(0,0,0,.28);}
   #card .inner{border:1.5px solid var(--ink);border-radius:4px;padding:30px 24px 26px;text-align:center;background:repeating-linear-gradient(115deg,rgba(122,82,48,.03) 0 3px,transparent 3px 7px),var(--washi2);}
@@ -680,6 +698,7 @@ AFRAME.registerComponent('shrine-experience', {
       <div class="sub">〜 靱公園のねむり番 〜</div>
       <div class="strip"><i class="c-bark"></i><i class="c-leaf"></i><i class="c-rose"></i></div>
       <p class="lead">靱公園の御神木で、眠る木霊にそっと触れると、<br>目を覚まし、若葉が芽吹き、バラが咲き広がる。</p>
+      <div id="resetNote">印を 消しました<small>スタンプ帳は <span id="resetCount">0 / 2</span> に もどりました</small></div>
       <button id="startBtn">はじめる<span class="k">カメラを ゆるして ください</span></button>
       <div id="note">靱公園AR ・ WebXRで、木霊にふれる</div>
     </div></div>
