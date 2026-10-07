@@ -37,16 +37,15 @@ window.UPPO_CONFIG = {
     { id:'shinboku', name:'本物の 御神木に 会えた', place:'楠永神社の 鳥居の 前', live:true },
   ],
 
-  /* ---- v16 神社モード（targets.mind の 1・2番＝楠永神社の正面写真） ---- */
+  /* ---- v16 神社モード（targets.mind v7：0＝カード／1〜5＝10/7に撮った神社の写真（工事の板が写った今の景色）） ---- */
   // x,y＝ウッポの足元の位置（写真の横幅=1、中心=0、上が+）/ z＝手前への出し量 / h＝ウッポの高さ（写真の横幅=1）
   // 現地で「ずれている」ときは、ここの数字を少しずつ変える
   SHRINE: {
-    1: { x: 0.06,  y: -0.41, z: 0.05, h: 0.25 },   // IMG_3933（鳥居の正面・近め）
-    2: { x: -0.04, y: -0.31, z: 0.05, h: 0.19 },   // IMG_3937（鳥居の正面・少し引き）
-    3: { x: -0.02, y: -0.47, z: 0.05, h: 0.27 },   // v5：9/30夕方の斜めの写真（左ななめ前から）
-    4: { x: -0.13, y: -0.50, z: 0.05, h: 0.30 },   // v6：IMG_3956（右ななめ前・近め）
-    5: { x: -0.02, y: -0.47, z: 0.05, h: 0.30 },   // v6：IMG_3955（御神木・近め）
-    6: { x: -0.01, y: -0.58, z: 0.05, h: 0.22 },   // v6：IMG_3945（御神木・引き）
+    1: { x: -0.04, y: -0.46, z: 0.05, h: 0.25 },   // v7：IMG_3972（10/7・鳥居の正面・引き）
+    2: { x:  0.00, y: -0.51, z: 0.05, h: 0.28 },   // v7：IMG_3973（10/7・鳥居の正面・近め）
+    3: { x: -0.03, y: -0.51, z: 0.05, h: 0.25 },   // v7：IMG_3974（10/7・左ななめ前）
+    4: { x:  0.08, y: -0.48, z: 0.05, h: 0.30 },   // v7：IMG_3976（10/7・御神木・近め）
+    5: { x: -0.10, y: -0.50, z: 0.05, h: 0.28 },   // v7：IMG_3977（10/7・右ななめ前）
   },
   SHRINE_ROT_Y: 0,                // ウッポが後ろを向くときは 180
   SHRINE_ROSE_RINGS: [ { r: 0.55, count: 7 } ],
@@ -604,7 +603,7 @@ AFRAME.registerComponent('shrine-experience', {
 <body>
 
   <a-scene
-    mindar-image="imageTargetSrc: ./targets.mind?v=6; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
+    mindar-image="imageTargetSrc: ./targets.mind?v=7; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
     color-space="sRGB"
     renderer="colorManagement: true; physicallyCorrectLights: true; antialias: true; alpha: true"
     vr-mode-ui="enabled: false"
@@ -626,7 +625,7 @@ AFRAME.registerComponent('shrine-experience', {
       </a-entity>
     </a-entity>
 
-    <!-- 楠永神社（鳥居の正面）：1＝近め、2＝少し引き。どちらで見つかっても同じ体験 -->
+    <!-- 楠永神社（鳥居の正面）：1＝引き、2＝近め。どちらで見つかっても同じ体験 -->
     <a-entity mindar-image-target="targetIndex: 1" shrine-experience="idx: 1">
       <a-entity class="sh-stage">
         <a-entity class="sh-uppo" gltf-model="#uppoModel"></a-entity>
@@ -641,7 +640,7 @@ AFRAME.registerComponent('shrine-experience', {
         <a-entity class="sh-roses"></a-entity>
       </a-entity>
     </a-entity>
-    <!-- v5：3＝鳥居を斜め（左ななめ前）から -->
+    <!-- v7：3＝鳥居を左ななめ前から -->
     <a-entity mindar-image-target="targetIndex: 3" shrine-experience="idx: 3">
       <a-entity class="sh-stage">
         <a-entity class="sh-uppo" gltf-model="#uppoModel"></a-entity>
@@ -649,7 +648,7 @@ AFRAME.registerComponent('shrine-experience', {
         <a-entity class="sh-roses"></a-entity>
       </a-entity>
     </a-entity>
-    <!-- v6：4＝鳥居を右ななめ前から／5・6＝御神木（近め・引き） -->
+    <!-- v7：4＝御神木（近め）／5＝鳥居を右ななめ前から -->
     <a-entity mindar-image-target="targetIndex: 4" shrine-experience="idx: 4">
       <a-entity class="sh-stage">
         <a-entity class="sh-uppo" gltf-model="#uppoModel"></a-entity>
@@ -658,13 +657,6 @@ AFRAME.registerComponent('shrine-experience', {
       </a-entity>
     </a-entity>
     <a-entity mindar-image-target="targetIndex: 5" shrine-experience="idx: 5">
-      <a-entity class="sh-stage">
-        <a-entity class="sh-uppo" gltf-model="#uppoModel"></a-entity>
-        <a-entity class="sh-leaves"></a-entity>
-        <a-entity class="sh-roses"></a-entity>
-      </a-entity>
-    </a-entity>
-    <a-entity mindar-image-target="targetIndex: 6" shrine-experience="idx: 6">
       <a-entity class="sh-stage">
         <a-entity class="sh-uppo" gltf-model="#uppoModel"></a-entity>
         <a-entity class="sh-leaves"></a-entity>
